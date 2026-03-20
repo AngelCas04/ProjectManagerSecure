@@ -1,0 +1,66 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.orig
+
+# Logs and temp files
+*.log
+*.tmp
+tmp*
+logs*
+ssm-tunnel.log
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Node / frontend / desktop
+**/node_modules/
+**/dist/
+**/.vite/
+**/.cache/
+**/coverage/
+**/.vercel/
+
+# Java / Maven
+**/target/
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Electron build artifacts
+desktop/electron-app/release/
+desktop/electron-app/out/
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/terraform/tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+deploy.auto.tfvars
+
+# Local tooling and generated data
+tmp_pgadmin_servers.json
+tmp_pgadmin_servers_with_rds.json
+tmp-api-cookies.txt
+deploy-ssm.json
+logs-ssm.json
+logs2-ssm.json
+tmp-ssm-*.json
+
+# Downloaded helper toolchains
+tools/apache-maven-3.9.10/
+tools/apache-maven-3.9.10-bin.zip
+tools/awscli/
+tools/session-manager-plugin/
+tools/terraform-1.8.5/
+tools/terraform_1.8.5_windows_amd64.zip

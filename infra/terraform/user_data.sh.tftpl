@@ -1,0 +1,83 @@
+#!/bin/bash
+set -euo pipefail
+
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+
+dnf update -y
+dnf install -y java-17-amazon-corretto-headless awscli amazon-cloudwatch-agent
+
+useradd --system --create-home --shell /sbin/nologin projectmanager || true
+mkdir -p /opt/projectmanager /var/log/projectmanager
+mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+chown -R projectmanager:projectmanager /opt/projectmanager /var/log/projectmanager
+
+cat >/opt/projectmanager/env <<EOF
+AWS_REGION=${aws_region}
+PROJECT_NAME=${project_name}
+ENVIRONMENT=${environment}
+ARTIFACT_BUCKET=${artifact_bucket}
+ARTIFACT_OBJECT_KEY=${artifact_object_key}
+SERVER_PORT=${app_port}
+SPRING_DATASOURCE_URL=jdbc:postgresql://${db_address}:5432/${db_name}
+SPRING_DATASOURCE_USERNAME=${db_username}
+SPRING_DATASOURCE_PASSWORD=${db_password}
+APP_SECURITY_JWT_SECRET=${app_jwt_secret}
+APP_SECURITY_ISSUER=secure-project-manager
+APP_SECURITY_SECURE_COOKIES=${app_secure_cookies}
+APP_SECURITY_COOKIE_SAME_SITE=${app_cookie_same_site}
+APP_SECURITY_ALLOWED_ORIGIN_1=${app_allowed_origin_1}
+APP_SECURITY_ALLOWED_ORIGIN_2=${app_allowed_origin_2}
+EOF
+chmod 0600 /opt/projectmanager/env
+
+aws s3 cp "s3://${artifact_bucket}/${artifact_object_key}" /opt/projectmanager/app.jar
+chown projectmanager:projectmanager /opt/projectmanager/app.jar
+
+cat >/etc/systemd/system/projectmanager.service <<'EOF'
+[Unit]
+Description=Project Manager Spring Boot Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=projectmanager
+Group=projectmanager
+EnvironmentFile=/opt/projectmanager/env
+WorkingDirectory=/opt/projectmanager
+ExecStart=/usr/bin/java -jar /opt/projectmanager/app.jar
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/user-data.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/user-data",
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config \
+  -m ec2 \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+  -s || true
+
+systemctl daemon-reload
+systemctl enable projectmanager || true
+systemctl start projectmanager || true

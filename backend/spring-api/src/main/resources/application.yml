@@ -1,0 +1,38 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/project_manager}
+    username: ${SPRING_DATASOURCE_USERNAME:project_manager}
+    password: ${SPRING_DATASOURCE_PASSWORD:project_manager}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: true
+  flyway:
+    enabled: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+app:
+  security:
+    jwt-secret: ${APP_SECURITY_JWT_SECRET:ReplaceThisWithALongerDevelopmentSecretForJwtSigning123456789}
+    issuer: ${APP_SECURITY_ISSUER:secure-project-manager}
+    access-token-ttl-seconds: ${APP_SECURITY_ACCESS_TTL:900}
+    refresh-token-ttl-seconds: ${APP_SECURITY_REFRESH_TTL:604800}
+    secure-cookies: ${APP_SECURITY_SECURE_COOKIES:false}
+    cookie-same-site: ${APP_SECURITY_COOKIE_SAME_SITE:Strict}
+    allowed-origins:
+      - ${APP_SECURITY_ALLOWED_ORIGIN_1:http://localhost:5173}
+      - ${APP_SECURITY_ALLOWED_ORIGIN_2:http://localhost:4173}
+
+logging:
+  level:
+    org.springframework.security: INFO
