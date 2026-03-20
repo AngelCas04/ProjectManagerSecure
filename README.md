@@ -55,10 +55,6 @@ Spring Boot API + WebSocket
 Guia paso a paso:
 [INSTALL.md](INSTALL.md)
 
-## Demo web
-
-- Frontend: [pm-collab-secure-20260319.vercel.app](https://pm-collab-secure-20260319.vercel.app)
-- Backend: [6ri7gtw0uc.execute-api.us-east-1.amazonaws.com](https://6ri7gtw0uc.execute-api.us-east-1.amazonaws.com)
 
 ## Estructura del monorepo
 
