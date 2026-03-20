@@ -8,8 +8,8 @@ Combina una experiencia moderna tipo workspace con tablero Kanban, calendario, c
 
 - Frontend en React con una interfaz enfocada en productividad, claridad y velocidad
 - Backend en Java + Spring Boot con autenticacion segura, WebSocket y API para proyectos, tareas, grupos y chat
-- Base de datos PostgreSQL preparada para ejecutarse en AWS RDS
-- Infraestructura en AWS para despliegue escalable
+- Base de datos PostgreSQL para entornos privados de produccion
+- Infraestructura cloud preparada para despliegue escalable
 - Aplicacion de escritorio en Electron con instalador `.exe`
 
 ## Lo que incluye hoy
@@ -31,7 +31,7 @@ Combina una experiencia moderna tipo workspace con tablero Kanban, calendario, c
 - Rate limiting y bloqueo temporal ante abuso
 - Control de acceso por rol y pertenencia a equipo
 - Validacion estricta de entrada en backend
-- PostgreSQL pensado para red privada en AWS
+- PostgreSQL pensado para red privada
 - Electron endurecido con `sandbox` y `contextIsolation`
 
 ## Arquitectura
@@ -45,7 +45,7 @@ Spring Boot API + WebSocket
         |
    PostgreSQL
         |
-       AWS
+     Cloud
 ```
 
 ## Descarga directa del instalador
@@ -55,15 +55,13 @@ Spring Boot API + WebSocket
 Guia paso a paso:
 [INSTALL.md](INSTALL.md)
 
-
 ## Estructura del monorepo
 
 ```text
 backend/spring-api        API segura con Spring Boot
 frontend/react-app        Aplicacion web React
 desktop/electron-app      Cliente de escritorio para Windows
-infra/terraform           Infraestructura como codigo para AWS
-tools                     Utilidades de soporte local
+infra/terraform           Infraestructura como codigo para nube privada
 ```
 
 ## Tecnologias
@@ -72,7 +70,7 @@ tools                     Utilidades de soporte local
 - Java 17 + Spring Boot 3
 - Spring Security + WebSocket
 - PostgreSQL
-- AWS
+- Terraform
 - Electron
 
 ## Puesta en marcha local
@@ -133,4 +131,4 @@ npm run dev
 
 ## Estado del proyecto
 
-El repositorio ya incluye la base funcional del producto, el frontend publicado, backend desplegado en AWS y el instalador de Windows generado. El siguiente paso natural es mantener el repo en GitHub para versionado, issues, releases y colaboracion.
+El repositorio ya incluye la base funcional del producto, el frontend publicado, backend desplegable en infraestructura privada y el instalador de Windows generado. El siguiente paso natural es mantenerlo en GitHub para versionado, issues, releases y colaboracion.

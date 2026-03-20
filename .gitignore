@@ -14,9 +14,11 @@ ssm-tunnel.log
 
 # Environment and secrets
 .env
+.env.*
 .env.local
 .env.*.local
 !.env.example
+!.env.production.example
 
 # Node / frontend / desktop
 **/node_modules/
@@ -58,6 +60,7 @@ logs2-ssm.json
 tmp-ssm-*.json
 
 # Downloaded helper toolchains
+tools/
 tools/apache-maven-3.9.10/
 tools/apache-maven-3.9.10-bin.zip
 tools/awscli/

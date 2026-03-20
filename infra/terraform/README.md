@@ -7,7 +7,7 @@ This folder contains a security-focused AWS baseline for the Project Manager pla
 - VPC with public and private subnets across multiple AZs
 - Internet gateway, NAT gateway, and route tables
 - Internal ALB in private subnets
-- HTTP API Gateway front door using the default `execute-api` HTTPS endpoint
+- Public HTTPS entrypoint for the application edge
 - EC2 application tier in private subnets behind the ALB
 - Private PostgreSQL RDS instance
 - S3 bucket for application artifacts and updates
@@ -47,7 +47,7 @@ Use `terraform.tfvars.example` as a starting point.
 
 - The EC2 bootstrap script expects a Spring Boot fat jar at `artifact_object_key` in the S3 bucket.
 - The backend should expose a health endpoint compatible with `health_check_path`.
-- The public browser endpoint is the API Gateway `execute-api` URL from `api_gateway_endpoint`.
+- The public browser endpoint is the HTTPS URL exported by `api_gateway_endpoint`.
 - If your frontend is deployed on Vercel, add its exact origin to `api_gateway_cors_allow_origins` before applying so browser requests can include cookies.
 - If you want SSH access, set `enable_ssh = true` and provide `allowed_ssh_cidrs`.
 - For production, pin the AMI or move to a golden-image pipeline.

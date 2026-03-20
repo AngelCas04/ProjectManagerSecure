@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "https://6ri7gtw0uc.execute-api.us-east-1.amazonaws.com/api/:match*"
+      "destination": "https://your-backend.example.com/api/:match*"
     },
     {
       "source": "/(.*)",

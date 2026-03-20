@@ -9,20 +9,19 @@ El proyecto esta dividido en cuatro capas principales:
 - `frontend/react-app`: SPA en React para login, tablero Kanban, calendario, chat, perfil y panel de proyectos.
 - `backend/spring-api`: API en Spring Boot con JWT, refresh tokens, CSRF, RBAC, PostgreSQL y WebSocket.
 - `desktop/electron-app`: shell de escritorio en Electron con auto-update.
-- `infra/terraform`: infraestructura AWS con VPC privada, EC2, RDS, ALB interno, API Gateway y S3.
+- `infra/terraform`: infraestructura como codigo para nube privada y despliegue seguro.
 
 ## Arquitectura
 
 Flujo general:
 
-Usuario -> Aplicacion de escritorio o navegador -> Frontend React -> Backend Spring Boot -> PostgreSQL en AWS
+Usuario -> Aplicacion de escritorio o navegador -> Frontend React -> Backend Spring Boot -> PostgreSQL
 
 En produccion actual:
 
 - Frontend publicado en Vercel.
-- Backend publicado en AWS con API Gateway HTTPS como entrada publica.
-- RDS permanece privado dentro de la VPC.
-- EC2 corre en subredes privadas.
+- Backend desplegado en infraestructura privada.
+- Base de datos aislada de acceso publico.
 
 ## Modulos Funcionales
 
@@ -98,9 +97,9 @@ Controles ya aplicados:
 - Bloqueo temporal ante brute force.
 - Sanitizacion de entradas.
 - Proteccion contra SQL injection con JPA y consultas parametrizadas.
-- PostgreSQL privado en RDS.
-- EC2 sin IP publica.
-- ALB interno detras de API Gateway.
+- PostgreSQL privado.
+- Nodos de aplicacion sin IP publica.
+- Balanceo interno para separar la capa publica de la privada.
 - Secretos via variables de entorno e IaC, no hardcodeados.
 
 Amenazas consideradas:
@@ -120,9 +119,9 @@ Amenazas consideradas:
 ## Despliegue Actual
 
 - Frontend: [https://pm-collab-secure-20260319.vercel.app](https://pm-collab-secure-20260319.vercel.app)
-- Backend: [https://6ri7gtw0uc.execute-api.us-east-1.amazonaws.com](https://6ri7gtw0uc.execute-api.us-east-1.amazonaws.com)
+- Backend: configurado de forma privada para el entorno productivo
 
-La base de datos RDS no es publica. Se accede por red privada y, para administracion local, mediante tunel SSM.
+La base de datos no es publica. Se accede por red privada y administracion controlada.
 
 ## Credenciales Demo
 
@@ -192,16 +191,15 @@ Backend:
 - `APP_SECURITY_COOKIE_SAME_SITE`
 - `APP_SECURITY_SECURE_COOKIES`
 
-## Infraestructura AWS
+## Infraestructura
 
 Terraform crea:
 
 - VPC con subredes publicas y privadas.
 - NAT Gateway e Internet Gateway.
 - ALB interno.
-- HTTP API Gateway como entrada publica.
 - EC2 en subred privada.
-- RDS PostgreSQL privado.
+- PostgreSQL privado.
 - Bucket S3 para artefactos.
 - KMS para cifrado.
 - CloudWatch Logs y Flow Logs.
@@ -232,11 +230,11 @@ Referencias utiles:
 - Revisa el servicio `projectmanager` en la instancia EC2.
 - Confirma que `GET /api/auth/health` responda `ok`.
 
-### `pgAdmin` o acceso a RDS
+### Acceso administrativo a base de datos
 
-- RDS no es publico.
-- Usa tunel SSM hacia la EC2 privada.
-- Luego conecta `pgAdmin` a `127.0.0.1:5432`.
+- La base no es publica.
+- Usa un tunel seguro o acceso administrativo controlado.
+- Conecta tu cliente SQL solo a traves del canal privado definido para tu entorno.
 
 ### Terraform falla por backend
 

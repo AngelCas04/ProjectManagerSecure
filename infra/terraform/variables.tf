@@ -89,13 +89,13 @@ variable "api_gateway_name" {
 }
 
 variable "api_gateway_stage_name" {
-  description = "HTTP API stage name. Use $default to keep the execute-api endpoint clean."
+  description = "HTTP API stage name. Use $default to keep the public endpoint clean."
   type        = string
   default     = "$default"
 }
 
 variable "api_gateway_cors_allow_origins" {
-  description = "Explicit origins allowed to call the public execute-api endpoint."
+  description = "Explicit origins allowed to call the public HTTPS endpoint."
   type        = list(string)
   default     = ["http://localhost:5173", "http://localhost:4173"]
 }
@@ -113,7 +113,7 @@ variable "api_gateway_cors_allow_methods" {
 }
 
 variable "api_gateway_cors_allow_credentials" {
-  description = "Whether browsers may send cookies to the execute-api endpoint."
+  description = "Whether browsers may send cookies to the public HTTPS endpoint."
   type        = bool
   default     = true
 }
