@@ -36,12 +36,31 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProperties)))
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh", "/ws/chat"))
+                .ignoringRequestMatchers(
+                    "/api/auth/login",
+                    "/api/auth/register",
+                    "/api/auth/refresh",
+                    "/api/auth/password-recovery/request",
+                    "/api/auth/forgot-password",
+                    "/api/auth/password-recovery/reset",
+                    "/api/auth/reset-password",
+                    "/ws/chat"
+                ))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.GET, "/", "/index.html", "/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/health").permitAll()
-                .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/auth/password-recovery/validate").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/workgroups/invitations/preview").permitAll()
+                .requestMatchers(
+                    "/api/auth/login",
+                    "/api/auth/register",
+                    "/api/auth/refresh",
+                    "/api/auth/password-recovery/request",
+                    "/api/auth/forgot-password",
+                    "/api/auth/password-recovery/reset",
+                    "/api/auth/reset-password"
+                ).permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/security/csrf").permitAll()
                 .requestMatchers("/ws/chat").authenticated()
                 .requestMatchers("/api/**").authenticated()

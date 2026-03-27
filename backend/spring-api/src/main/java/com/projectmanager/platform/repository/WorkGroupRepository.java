@@ -10,6 +10,8 @@ import java.util.UUID;
 public interface WorkGroupRepository extends JpaRepository<WorkGroup, UUID> {
     List<WorkGroup> findAllByOrderByNameAsc();
     Optional<WorkGroup> findByNameIgnoreCase(String name);
+    Optional<WorkGroup> findByOwnerId(UUID ownerId);
+    List<WorkGroup> findByProjectsId(UUID projectId);
     boolean existsByNameIgnoreCase(String name);
     long countBy();
 }

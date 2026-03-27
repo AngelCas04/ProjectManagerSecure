@@ -10,6 +10,10 @@ const HELP_ITEMS = [
     answer: 'Ve a "Crear cuenta", completa tu nombre, equipo, correo y contrasena. Despues entraras a tu espacio para empezar a colaborar.'
   },
   {
+    question: 'Como recupero mi contrasena?',
+    answer: 'Usa el boton de recuperacion, escribe tu correo y la palabra que guardaste al registrarte. Despues recibiras un enlace para crear una nueva contrasena.'
+  },
+  {
     question: 'Que es un equipo?',
     answer: 'Es el grupo de trabajo con el que compartes proyectos, mensajes y responsabilidades dentro del espacio.'
   },

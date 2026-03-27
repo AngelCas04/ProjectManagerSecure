@@ -42,6 +42,7 @@ public class WorkGroupService {
     private final ViewMapper viewMapper;
     private final AuditService auditService;
     private final InputSanitizer inputSanitizer;
+    private final TeamInvitationService teamInvitationService;
 
     public WorkGroupService(
         WorkGroupRepository workGroupRepository,
@@ -50,7 +51,8 @@ public class WorkGroupService {
         ProjectRepository projectRepository,
         ViewMapper viewMapper,
         AuditService auditService,
-        InputSanitizer inputSanitizer
+        InputSanitizer inputSanitizer,
+        TeamInvitationService teamInvitationService
     ) {
         this.workGroupRepository = workGroupRepository;
         this.workGroupMemberRepository = workGroupMemberRepository;
@@ -59,6 +61,7 @@ public class WorkGroupService {
         this.viewMapper = viewMapper;
         this.auditService = auditService;
         this.inputSanitizer = inputSanitizer;
+        this.teamInvitationService = teamInvitationService;
     }
 
     @Transactional(readOnly = true)
@@ -72,7 +75,13 @@ public class WorkGroupService {
     public List<ViewModels.UserDirectoryView> listDirectory(AuthenticatedUser currentUser) {
         List<AppUser> users;
         if (currentUser.isAdmin()) {
-            users = appUserRepository.findAllByEnabledTrueOrderByNameAsc();
+            WorkGroup managedGroup = ownedGroupOrThrow(currentUser);
+            Set<UUID> userIds = workGroupMemberRepository.findByWorkGroupIdAndStatusOrderByCreatedAtAsc(managedGroup.getId(), MembershipStatus.ACTIVE)
+                .stream()
+                .map(member -> member.getUser().getId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            userIds.add(currentUser.userId());
+            users = appUserRepository.findByIdInAndEnabledTrueOrderByNameAsc(userIds);
         } else {
             List<UUID> groupIds = workGroupMemberRepository.findByUserIdAndStatus(currentUser.userId(), MembershipStatus.ACTIVE)
                 .stream()
@@ -98,6 +107,9 @@ public class WorkGroupService {
     @Transactional
     public ViewModels.WorkGroupView createWorkGroup(WorkGroupRequests.CreateWorkGroupRequest request, AuthenticatedUser currentUser) {
         AppUser owner = requireAdminUser(currentUser);
+        if (workGroupRepository.findByOwnerId(owner.getId()).isPresent()) {
+            throw new ResponseStatusException(CONFLICT, "Ya tienes un equipo principal. Puedes editarlo desde Miembros.");
+        }
         String name = sanitizeRequiredName(request.name(), "Group name");
 
         if (workGroupRepository.existsByNameIgnoreCase(name)) {
@@ -115,7 +127,7 @@ public class WorkGroupService {
         workGroup.setProjects(resolveProjects(request.projectIds()));
         workGroupRepository.save(workGroup);
 
-        upsertMembership(workGroup, owner, WorkGroupRoleName.LEAD, MembershipStatus.ACTIVE);
+        addMembership(workGroup, owner, WorkGroupRoleName.LEAD, MembershipStatus.ACTIVE);
         owner.setTeam(name);
         appUserRepository.save(owner);
 
@@ -125,8 +137,8 @@ public class WorkGroupService {
 
     @Transactional
     public ViewModels.WorkGroupView updateWorkGroup(UUID workGroupId, WorkGroupRequests.UpdateWorkGroupRequest request, AuthenticatedUser currentUser) {
-        requireAdminUser(currentUser);
-        WorkGroup workGroup = findGroup(workGroupId);
+        AppUser owner = requireAdminUser(currentUser);
+        WorkGroup workGroup = findOwnedGroup(workGroupId, owner);
         String nextName = sanitizeRequiredName(request.name(), "Group name");
 
         workGroupRepository.findByNameIgnoreCase(nextName)
@@ -157,17 +169,17 @@ public class WorkGroupService {
 
     @Transactional
     public ViewModels.WorkGroupView assignMember(UUID workGroupId, WorkGroupRequests.AssignMemberRequest request, AuthenticatedUser currentUser) {
-        requireAdminUser(currentUser);
+        AppUser owner = requireAdminUser(currentUser);
         if (request.userId() == null) {
             throw new ResponseStatusException(BAD_REQUEST, "User id is required.");
         }
 
-        WorkGroup workGroup = findGroup(workGroupId);
+        WorkGroup workGroup = findOwnedGroup(workGroupId, owner);
         AppUser target = appUserRepository.findById(request.userId())
             .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Target user not found."));
 
         WorkGroupRoleName role = WorkGroupRoleName.valueOf(request.role());
-        upsertMembership(workGroup, target, role, MembershipStatus.ACTIVE);
+        addMembership(workGroup, target, role, MembershipStatus.ACTIVE);
         if (target.getTeam() == null || target.getTeam().isBlank()) {
             target.setTeam(workGroup.getName());
             appUserRepository.save(target);
@@ -179,8 +191,8 @@ public class WorkGroupService {
 
     @Transactional
     public ViewModels.WorkGroupView removeMember(UUID workGroupId, UUID userId, AuthenticatedUser currentUser) {
-        requireAdminUser(currentUser);
-        WorkGroup workGroup = findGroup(workGroupId);
+        AppUser owner = requireAdminUser(currentUser);
+        WorkGroup workGroup = findOwnedGroup(workGroupId, owner);
         WorkGroupMember membership = workGroupMemberRepository.findByWorkGroupIdAndUserId(workGroupId, userId)
             .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Membership not found."));
 
@@ -248,9 +260,130 @@ public class WorkGroupService {
             workGroupRepository.save(workGroup);
         }
 
-        upsertMembership(workGroup, user, leadMembership ? WorkGroupRoleName.LEAD : WorkGroupRoleName.MEMBER, MembershipStatus.ACTIVE);
+        addMembership(workGroup, user, leadMembership ? WorkGroupRoleName.LEAD : WorkGroupRoleName.MEMBER, MembershipStatus.ACTIVE);
         user.setTeam(workGroup.getName());
         appUserRepository.save(user);
+    }
+
+    @Transactional(readOnly = true)
+    public ViewModels.ManagedTeamView managedTeam(AuthenticatedUser currentUser) {
+        AppUser owner = requireAdminUser(currentUser);
+        WorkGroup workGroup = workGroupRepository.findByOwnerId(owner.getId()).orElse(null);
+        if (workGroup == null) {
+            return new ViewModels.ManagedTeamView(null, List.of());
+        }
+
+        return new ViewModels.ManagedTeamView(
+            toWorkGroupView(workGroup),
+            teamInvitationService.listPendingInvitations(workGroup, owner)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Set<String> accessibleMemberNames(AuthenticatedUser currentUser) {
+        return accessibleGroups(currentUser).stream()
+            .flatMap(group -> workGroupMemberRepository.findByWorkGroupIdAndStatusOrderByCreatedAtAsc(group.getId(), MembershipStatus.ACTIVE).stream())
+            .map(member -> member.getUser().getName())
+            .map(inputSanitizer::sanitizePlainText)
+            .filter(name -> !name.isBlank())
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    @Transactional(readOnly = true)
+    public Set<String> memberNamesForProject(Project project, AuthenticatedUser currentUser) {
+        List<WorkGroup> sourceGroups = workGroupRepository.findByProjectsId(project.getId());
+        if (sourceGroups.isEmpty()) {
+            sourceGroups = accessibleGroups(currentUser);
+        }
+
+        Set<String> names = sourceGroups.stream()
+            .flatMap(group -> workGroupMemberRepository.findByWorkGroupIdAndStatusOrderByCreatedAtAsc(group.getId(), MembershipStatus.ACTIVE).stream())
+            .map(member -> member.getUser().getName())
+            .map(inputSanitizer::sanitizePlainText)
+            .filter(name -> !name.isBlank())
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        String ownerName = project.getOwner() == null ? "" : inputSanitizer.sanitizePlainText(project.getOwner().getName());
+        if (!ownerName.isBlank()) {
+            names.add(ownerName);
+        }
+        return names;
+    }
+
+    @Transactional
+    public ViewModels.ManagedTeamView setupManagedTeam(WorkGroupRequests.TeamSetupRequest request, AuthenticatedUser currentUser) {
+        AppUser owner = requireAdminUser(currentUser);
+        WorkGroup workGroup = workGroupRepository.findByOwnerId(owner.getId())
+            .orElseGet(() -> {
+                WorkGroup created = new WorkGroup();
+                created.setCode(nextGroupCode(request.name()));
+                created.setOwner(owner);
+                return created;
+            });
+
+        String name = sanitizeRequiredName(request.name(), "Group name");
+        workGroupRepository.findByNameIgnoreCase(name)
+            .filter(existing -> !existing.getId().equals(workGroup.getId()))
+            .ifPresent(existing -> {
+                throw new ResponseStatusException(CONFLICT, "A work group with that name already exists.");
+            });
+
+        workGroup.setName(name);
+        workGroup.setDescription(sanitizeDescription(request.description()));
+        workGroup.setFocus(sanitizeFocus(request.focus(), name));
+        workGroup.setVisibility(normalizeVisibility(request.visibility()));
+        workGroup.setCadence(sanitizeCadence(request.cadence()));
+        workGroupRepository.save(workGroup);
+
+        owner.setTeam(name);
+        appUserRepository.save(owner);
+        addMembership(workGroup, owner, WorkGroupRoleName.LEAD, MembershipStatus.ACTIVE);
+
+        if (request.memberEmails() != null && !request.memberEmails().isEmpty()) {
+            teamInvitationService.inviteMembers(workGroup, owner, request.memberEmails());
+        }
+
+        auditService.record(null, "WorkGroup", currentUser.displayName(), "Prepared managed team " + workGroup.getName() + ".");
+        return new ViewModels.ManagedTeamView(
+            toWorkGroupView(workGroup),
+            teamInvitationService.listPendingInvitations(workGroup, owner)
+        );
+    }
+
+    @Transactional
+    public ViewModels.ManagedTeamView inviteManagedTeamMembers(WorkGroupRequests.InviteMembersRequest request, AuthenticatedUser currentUser) {
+        AppUser owner = requireAdminUser(currentUser);
+        WorkGroup workGroup = ownedGroupOrThrow(currentUser);
+        teamInvitationService.inviteMembers(workGroup, owner, request.emails());
+        auditService.record(null, "WorkGroup", currentUser.displayName(), "Sent team invitations for " + workGroup.getName() + ".");
+        return new ViewModels.ManagedTeamView(
+            toWorkGroupView(workGroup),
+            teamInvitationService.listPendingInvitations(workGroup, owner)
+        );
+    }
+
+    @Transactional
+    public ViewModels.ManagedTeamView revokeManagedTeamInvitation(UUID invitationId, AuthenticatedUser currentUser) {
+        AppUser owner = requireAdminUser(currentUser);
+        WorkGroup workGroup = ownedGroupOrThrow(currentUser);
+        teamInvitationService.revokeInvitation(workGroup, invitationId, owner);
+        return new ViewModels.ManagedTeamView(
+            toWorkGroupView(workGroup),
+            teamInvitationService.listPendingInvitations(workGroup, owner)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ViewModels.TeamInvitationPreviewView previewInvitation(String token) {
+        return teamInvitationService.previewInvitation(token);
+    }
+
+    @Transactional
+    public void acceptInvitation(String token, AuthenticatedUser currentUser) {
+        AppUser user = appUserRepository.findById(currentUser.userId())
+            .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "User not found."));
+        teamInvitationService.acceptInvitation(token, user, this);
+        auditService.record(null, "WorkGroup", currentUser.displayName(), "Accepted a team invitation.");
     }
 
     private AppUser requireAdminUser(AuthenticatedUser currentUser) {
@@ -264,7 +397,7 @@ public class WorkGroupService {
 
     private List<WorkGroup> accessibleGroups(AuthenticatedUser currentUser) {
         if (currentUser.isAdmin()) {
-            return workGroupRepository.findAllByOrderByNameAsc();
+            return ownedGroups(currentUser);
         }
 
         List<UUID> groupIds = workGroupMemberRepository.findByUserIdAndStatus(currentUser.userId(), MembershipStatus.ACTIVE)
@@ -282,7 +415,7 @@ public class WorkGroupService {
             .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Work group not found."));
     }
 
-    private WorkGroupMember upsertMembership(WorkGroup workGroup, AppUser user, WorkGroupRoleName role, MembershipStatus status) {
+    WorkGroupMember addMembership(WorkGroup workGroup, AppUser user, WorkGroupRoleName role, MembershipStatus status) {
         WorkGroupMember member = workGroupMemberRepository.findByWorkGroupIdAndUserId(workGroup.getId(), user.getId())
             .orElseGet(WorkGroupMember::new);
         member.setWorkGroup(workGroup);
@@ -392,5 +525,24 @@ public class WorkGroupService {
 
     private String defaultTeamName() {
         return "General Delivery";
+    }
+
+    private List<WorkGroup> ownedGroups(AuthenticatedUser currentUser) {
+        return workGroupRepository.findByOwnerId(currentUser.userId())
+            .map(List::of)
+            .orElse(List.of());
+    }
+
+    private WorkGroup ownedGroupOrThrow(AuthenticatedUser currentUser) {
+        return workGroupRepository.findByOwnerId(currentUser.userId())
+            .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "You do not have a managed team yet."));
+    }
+
+    private WorkGroup findOwnedGroup(UUID workGroupId, AppUser owner) {
+        WorkGroup workGroup = findGroup(workGroupId);
+        if (workGroup.getOwner() == null || !workGroup.getOwner().getId().equals(owner.getId())) {
+            throw new ResponseStatusException(FORBIDDEN, "Solo puedes gestionar tu propio equipo.");
+        }
+        return workGroup;
     }
 }

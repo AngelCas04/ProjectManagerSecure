@@ -35,6 +35,10 @@ const pageMeta = {
   '/app/profile': {
     title: 'Cuenta',
     description: 'Actualiza tu informacion y revisa los datos basicos de tu perfil.'
+  },
+  '/app/members': {
+    title: 'Miembros',
+    description: 'Crea tu equipo, envia invitaciones y gestiona quien puede entrar.'
   }
 };
 

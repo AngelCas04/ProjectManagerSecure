@@ -3,6 +3,25 @@ const API_ROOT = API_BASE_URL.replace(/\/api$/, '');
 const WS_ROOT = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '');
 let csrfToken = '';
 
+async function refreshCsrfToken() {
+  const response = await fetch(`${API_BASE_URL}/security/csrf`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    throw new Error('No se pudo actualizar la sesion segura.');
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
+
+  csrfToken = typeof payload === 'string' ? payload : '';
+  return csrfToken;
+}
+
 async function request(path, options = {}) {
   const method = options.method || 'GET';
   const headers = {
@@ -28,6 +47,14 @@ async function request(path, options = {}) {
     ? await response.json()
     : await response.text();
 
+  if (response.status === 403 && !options.skipCsrf && method !== 'GET' && !options._csrfRetried) {
+    await refreshCsrfToken();
+    return request(path, {
+      ...options,
+      _csrfRetried: true
+    });
+  }
+
   if (!response.ok) {
     const error = new Error(payload?.message || 'No se pudo completar la solicitud segura.');
     error.status = response.status;
@@ -49,9 +76,17 @@ async function optionalRequest(path, options = {}) {
   }
 }
 
-function websocketUrl(projectId) {
-  const wsRoot = WS_ROOT || API_ROOT.replace(/^http/, 'ws');
-  return `${wsRoot}/ws/chat?projectId=${projectId}`;
+function websocketUrl(projectId, roomId = '') {
+  if (!WS_ROOT) {
+    return '';
+  }
+
+  const wsRoot = WS_ROOT.replace(/\/+$/, '');
+  const params = new URLSearchParams({ projectId });
+  if (roomId) {
+    params.set('roomId', roomId);
+  }
+  return `${wsRoot}/ws/chat?${params.toString()}`;
 }
 
 export const api = {
@@ -59,7 +94,7 @@ export const api = {
     return request('/bootstrap');
   },
   fetchCsrfToken() {
-    return request('/security/csrf', { method: 'GET' }).then((token) => {
+    return refreshCsrfToken().then((token) => {
       csrfToken = token;
       return token;
     });
@@ -82,7 +117,35 @@ export const api = {
         name: payload.name,
         email: payload.email,
         password: payload.password,
-        team: payload.team
+        team: payload.team,
+        accountType: payload.accountType,
+        inviteToken: payload.inviteToken
+      })
+    });
+  },
+  requestPasswordRecovery(payload) {
+    return request('/auth/password-recovery/request', {
+      method: 'POST',
+      skipCsrf: true,
+      body: JSON.stringify({
+        email: payload.email,
+        recoveryPhrase: payload.recoveryPhrase
+      })
+    });
+  },
+  validatePasswordResetToken(token) {
+    return request(`/auth/password-recovery/validate?token=${encodeURIComponent(token)}`, {
+      method: 'GET',
+      skipCsrf: true
+    });
+  },
+  resetPassword(payload) {
+    return request('/auth/password-recovery/reset', {
+      method: 'POST',
+      skipCsrf: true,
+      body: JSON.stringify({
+        token: payload.token,
+        password: payload.password
       })
     });
   },
@@ -124,11 +187,57 @@ export const api = {
   updateProfile(payload) {
     return request('/profile', {
       method: 'PUT',
+      body: JSON.stringify({
+        ...payload,
+        avatarUrl: payload.avatarUrl || null
+      })
+    });
+  },
+  fetchManagedTeam() {
+    return request('/workgroups/managed');
+  },
+  setupManagedTeam(payload) {
+    return request('/workgroups/managed/setup', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  inviteManagedTeamMembers(payload) {
+    return request('/workgroups/managed/invitations', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  revokeManagedTeamInvitation(invitationId) {
+    return request(`/workgroups/managed/invitations/${invitationId}`, {
+      method: 'DELETE'
+    });
+  },
+  previewTeamInvitation(token) {
+    return request(`/workgroups/invitations/preview?token=${encodeURIComponent(token)}`, {
+      method: 'GET',
+      skipCsrf: true
+    });
+  },
+  acceptTeamInvitation(payload) {
+    return request('/workgroups/invitations/accept', {
+      method: 'POST',
       body: JSON.stringify(payload)
     });
   },
   postMessage(payload) {
     return request('/messages', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  fetchChatRooms() {
+    return request('/messages/rooms', {
+      method: 'GET'
+    });
+  },
+  createChatRoom(payload) {
+    return request('/messages/rooms', {
       method: 'POST',
       body: JSON.stringify(payload)
     });

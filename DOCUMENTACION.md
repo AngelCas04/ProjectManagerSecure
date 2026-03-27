@@ -11,6 +11,39 @@ El proyecto esta dividido en cuatro capas principales:
 - `desktop/electron-app`: shell de escritorio en Electron con auto-update.
 - `infra/terraform`: infraestructura como codigo para nube privada y despliegue seguro.
 
+## Notas De Version
+
+### Project Manager V1.01
+
+Actualizacion orientada a producto, colaboracion en tiempo real y administracion de equipos.
+
+#### Mejoras principales
+
+- Flujo de login y registro mas claro, con ayuda contextual para usuarios no tecnicos.
+- Recuperacion de contrasena con palabra de seguridad, envio de correo y pantalla de restablecimiento.
+- Invitaciones de equipo por correo con enlace directo y experiencia de alta guiada.
+- Administracion de miembros para administradores: invitar, revisar pendientes y retirar accesos.
+- Perfil personal ampliado con soporte para foto de usuario.
+- Creacion de equipos propios para administradores y onboarding inicial del workspace.
+- Nuevas salas de chat por proyecto y mejor organizacion de conversaciones.
+- Acceso corregido para que miembros vean proyectos, tareas y mensajes compartidos por su equipo.
+- Sincronizacion automatica del workspace para refrescar datos sin depender de recargas manuales.
+- Equipos nuevos empiezan limpios, sin proyectos preasignados ni datos heredados.
+
+#### Correcciones relevantes
+
+- Se corrigieron errores de acceso que impedian a miembros ver proyectos creados por el administrador.
+- Se corrigio la creacion de proyectos cuando el responsable se resolvia fuera de una transaccion valida.
+- Se corrigio la creacion de multiples salas de chat por proyecto.
+- Se corrigio el flujo de registro desde invitacion para bloquear correo y equipo cuando vienen definidos.
+- Se corrigio el instalador Electron para evitar el fallo de `electron-log` en el proceso principal.
+
+#### Resultado esperado en V1.01
+
+- Un administrador puede crear su equipo, invitar miembros y empezar desde un workspace vacio.
+- Los miembros ven el trabajo compartido por su equipo con sincronizacion automatica.
+- La experiencia de acceso, recuperacion y colaboracion se siente mas cercana a una aplicacion lista para uso real.
+
 ## Arquitectura
 
 Flujo general:

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { calculateProjectProgress } from '../utils/projects';
 import { sanitizeMultilineText, sanitizePlainText, validateProjectForm } from '../utils/security';
+import { getWorkspaceMembers } from '../utils/team';
 
 const initialProjectForm = {
   name: '',
@@ -16,13 +17,17 @@ const initialProjectForm = {
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
-  const { createProject, projects, tasks, workgroups } = useAppContext();
+  const { createProject, currentUser, projects, tasks, userDirectory, workgroups } = useAppContext();
   const [query, setQuery] = useState('');
   const [form, setForm] = useState(initialProjectForm);
   const [submitted, setSubmitted] = useState(false);
 
   const deferredQuery = useDeferredValue(query);
   const errors = useMemo(() => validateProjectForm(form), [form]);
+  const assignableLeads = useMemo(
+    () => getWorkspaceMembers(workgroups, currentUser, userDirectory),
+    [currentUser, userDirectory, workgroups]
+  );
 
   const filteredProjects = useMemo(() => {
     const normalized = deferredQuery.toLowerCase().trim();
@@ -139,6 +144,14 @@ export default function ProjectsPage() {
             </div>
           </div>
 
+          {!assignableLeads.length ? (
+            <div className="empty-state subtle-empty-state">
+              <p className="body-copy">
+                Crea o configura tu equipo primero para poder asignar un responsable real al proyecto.
+              </p>
+            </div>
+          ) : null}
+
           <form className="form-stack" onSubmit={handleSubmit}>
             <label className="field">
               Nombre del proyecto
@@ -153,7 +166,14 @@ export default function ProjectsPage() {
 
             <label className="field">
               Responsable
-              <input value={form.lead} onChange={(event) => updateField('lead', event.target.value)} placeholder="Quien lidera este proyecto" />
+              <select value={form.lead} onChange={(event) => updateField('lead', event.target.value)}>
+                <option value="">Selecciona a la persona responsable</option>
+                {assignableLeads.map((member) => (
+                  <option key={member.id || member.email || member.name} value={member.name}>
+                    {member.name}{member.email ? ` - ${member.email}` : ''}
+                  </option>
+                ))}
+              </select>
               {submitted && errors.lead ? <span className="field-error">{errors.lead}</span> : null}
             </label>
 

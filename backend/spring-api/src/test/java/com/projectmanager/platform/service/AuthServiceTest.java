@@ -6,6 +6,7 @@ import com.projectmanager.platform.config.SecurityProperties;
 import com.projectmanager.platform.domain.AppUser;
 import com.projectmanager.platform.repository.AppUserRepository;
 import com.projectmanager.platform.repository.LoginAttemptRepository;
+import com.projectmanager.platform.repository.WorkGroupRepository;
 import com.projectmanager.platform.security.BruteForceProtectionService;
 import com.projectmanager.platform.security.InputSanitizer;
 import com.projectmanager.platform.security.JwtService;
@@ -29,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +55,14 @@ class AuthServiceTest {
     private BruteForceProtectionService bruteForceProtectionService;
     @Mock
     private WorkGroupService workGroupService;
+    @Mock
+    private WorkGroupRepository workGroupRepository;
+    @Mock
+    private RecoveryPhraseService recoveryPhraseService;
+    @Mock
+    private PasswordRecoveryService passwordRecoveryService;
+    @Mock
+    private TeamInvitationService teamInvitationService;
 
     private AuthService authService;
 
@@ -64,7 +74,7 @@ class AuthServiceTest {
         securityProperties.setSecureCookies(false);
 
         InputSanitizer inputSanitizer = new InputSanitizer();
-        ViewMapper viewMapper = new ViewMapper(inputSanitizer);
+        ViewMapper viewMapper = new ViewMapper(inputSanitizer, workGroupRepository);
 
         authService = new AuthService(
             appUserRepository,
@@ -77,14 +87,19 @@ class AuthServiceTest {
             bruteForceProtectionService,
             workGroupService,
             viewMapper,
-            securityProperties
+            securityProperties,
+            recoveryPhraseService,
+            passwordRecoveryService,
+            teamInvitationService
         );
     }
 
     @Test
-    void registerCreatesPrimaryWorkGroupMembershipForRequestedTeam() {
+    void registerLeavesMemberUnassignedUntilTeamSetup() {
         when(appUserRepository.existsByEmail("new.user@acme.dev")).thenReturn(false);
         when(passwordEncoder.encode("SecurePass123!")).thenReturn("hashed-password");
+        when(passwordEncoder.encode("atlas-brisa-delta")).thenReturn("hashed-recovery");
+        when(recoveryPhraseService.generate()).thenReturn("atlas-brisa-delta");
         when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
             AppUser user = invocation.getArgument(0);
             if (user.getId() == null) {
@@ -99,19 +114,23 @@ class AuthServiceTest {
         when(requestMetadataService.userAgent(any())).thenReturn("JUnit");
 
         ViewModels.AuthView authView = authService.register(
-            new AuthRequests.RegisterRequest("  New User  ", "NEW.USER@ACME.DEV", "SecurePass123!", " Platform Security "),
+            new AuthRequests.RegisterRequest("  New User  ", "NEW.USER@ACME.DEV", "SecurePass123!", " Platform Security ", "MIEMBRO_PROYECTO", null),
             new MockHttpServletRequest(),
             new MockHttpServletResponse()
         );
 
         ArgumentCaptor<AppUser> userCaptor = ArgumentCaptor.forClass(AppUser.class);
-        verify(workGroupService).ensureRegistrationMembership(userCaptor.capture(), anyString());
+        verify(appUserRepository, atLeastOnce()).save(userCaptor.capture());
 
         AppUser savedUser = userCaptor.getValue();
         assertThat(savedUser.getEmail()).isEqualTo("new.user@acme.dev");
-        assertThat(savedUser.getTeam()).isEqualTo("Platform Security");
-        assertThat(authView.currentUser().team()).isEqualTo("Platform Security");
+        assertThat(savedUser.getTeam()).isEqualTo("Sin equipo");
+        assertThat(savedUser.getRecoveryPhraseHash()).isEqualTo("hashed-recovery");
+        assertThat(authView.currentUser().team()).isEqualTo("Sin equipo");
         assertThat(authView.currentUser().email()).isEqualTo("new.user@acme.dev");
+        assertThat(authView.recoveryKit()).isNotNull();
+        assertThat(authView.recoveryKit().passphrase()).isEqualTo("atlas-brisa-delta");
+        verify(workGroupService, never()).ensureRegistrationMembership(any(AppUser.class), anyString());
     }
 
     @Test
@@ -119,7 +138,7 @@ class AuthServiceTest {
         when(appUserRepository.existsByEmail("weak.user@acme.dev")).thenReturn(false);
 
         assertThatThrownBy(() -> authService.register(
-            new AuthRequests.RegisterRequest("Weak User", "weak.user@acme.dev", "onlylowercase12", "Security"),
+            new AuthRequests.RegisterRequest("Weak User", "weak.user@acme.dev", "onlylowercase12", "Security", "MIEMBRO_PROYECTO", null),
             new MockHttpServletRequest(),
             new MockHttpServletResponse()
         ))

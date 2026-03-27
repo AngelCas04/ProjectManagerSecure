@@ -2,18 +2,22 @@ import { motion } from 'framer-motion';
 import { NavLink } from 'react-router-dom';
 import { staggerItem, staggerParent } from '../../utils/motion';
 
-const navItems = [
-  { to: '/app/overview', label: 'Inicio', caption: 'Resumen general' },
-  { to: '/app/projects', label: 'Proyectos', caption: 'Portafolio' },
-  { to: '/app/groups', label: 'Equipos', caption: 'Personas y roles' },
-  { to: '/app/board', label: 'Tablero', caption: 'Seguimiento' },
-  { to: '/app/calendar', label: 'Calendario', caption: 'Fechas y reuniones' },
-  { to: '/app/chat', label: 'Mensajes', caption: 'Conversaciones' },
-  { to: '/app/timeline', label: 'Actividad', caption: 'Ultimos movimientos' },
-  { to: '/app/profile', label: 'Cuenta', caption: 'Perfil y ajustes' }
-];
-
 export function Sidebar({ currentUser, isOpen, onClose }) {
+  const navItems = [
+    { to: '/app/overview', label: 'Inicio', caption: 'Resumen general' },
+    { to: '/app/projects', label: 'Proyectos', caption: 'Portafolio' },
+    { to: '/app/groups', label: 'Equipos', caption: 'Personas y roles' },
+    { to: '/app/board', label: 'Tablero', caption: 'Seguimiento' },
+    { to: '/app/calendar', label: 'Calendario', caption: 'Fechas y reuniones' },
+    { to: '/app/chat', label: 'Mensajes', caption: 'Conversaciones' },
+    { to: '/app/timeline', label: 'Actividad', caption: 'Ultimos movimientos' },
+    { to: '/app/profile', label: 'Cuenta', caption: 'Perfil y ajustes' }
+  ];
+
+  if (currentUser?.canManageMembers) {
+    navItems.push({ to: '/app/members', label: 'Miembros', caption: 'Invitaciones y accesos' });
+  }
+
   return (
     <motion.aside
       className={isOpen ? 'shell-sidebar open' : 'shell-sidebar'}
@@ -51,7 +55,9 @@ export function Sidebar({ currentUser, isOpen, onClose }) {
       </motion.nav>
 
       <div className="sidebar-footer">
-        <div className="user-badge">{currentUser?.initials || 'PM'}</div>
+        <div className={currentUser?.avatarUrl ? 'user-badge has-image' : 'user-badge'}>
+          {currentUser?.avatarUrl ? <img src={currentUser.avatarUrl} alt={`Foto de ${currentUser?.name || 'mi cuenta'}`} /> : currentUser?.initials || 'PM'}
+        </div>
         <div>
           <strong>{currentUser?.name || 'Mi cuenta'}</strong>
           <p>{currentUser?.role || 'Miembro'}</p>

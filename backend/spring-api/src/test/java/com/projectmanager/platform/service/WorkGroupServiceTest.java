@@ -48,13 +48,15 @@ class WorkGroupServiceTest {
     private ProjectRepository projectRepository;
     @Mock
     private AuditService auditService;
+    @Mock
+    private TeamInvitationService teamInvitationService;
 
     private WorkGroupService workGroupService;
 
     @BeforeEach
     void setUp() {
         InputSanitizer inputSanitizer = new InputSanitizer();
-        ViewMapper viewMapper = new ViewMapper(inputSanitizer);
+        ViewMapper viewMapper = new ViewMapper(inputSanitizer, workGroupRepository);
         workGroupService = new WorkGroupService(
             workGroupRepository,
             workGroupMemberRepository,
@@ -62,7 +64,8 @@ class WorkGroupServiceTest {
             projectRepository,
             viewMapper,
             auditService,
-            inputSanitizer
+            inputSanitizer,
+            teamInvitationService
         );
     }
 

@@ -33,7 +33,7 @@ function visibilityLabel(value) {
 
 export default function GroupsPage() {
   const { createWorkgroup, addWorkgroupMember, currentUser, projects, removeWorkgroupMember, updateWorkgroup, userDirectory, workgroups } = useAppContext();
-  const isAdmin = currentUser?.role === 'Administrador';
+  const isAdmin = Boolean(currentUser?.canManageMembers);
   const [selectedGroupId, setSelectedGroupId] = useState(workgroups[0]?.id || '');
   const [groupForm, setGroupForm] = useState(() => ({
     ...initialGroupForm,
@@ -88,6 +88,91 @@ export default function GroupsPage() {
     const assignedMemberIds = new Set((selectedGroup?.members || []).map((member) => member.id));
     return userDirectory.filter((entry) => !assignedMemberIds.has(entry.id));
   }, [selectedGroup?.members, userDirectory]);
+
+  if (!isAdmin) {
+    return (
+      <motion.div className="page-stack" variants={staggerParent} initial="initial" animate="animate">
+        <motion.section className="hero-surface workgroup-hero" variants={revealPanel}>
+          <div>
+            <p className="eyebrow">Equipos</p>
+            <h1>Tu equipo y las personas con quienes trabajas</h1>
+            <p className="body-copy hero-copy">
+              Aqui puedes ver a tus companeros, el responsable del equipo y los proyectos compartidos, sin opciones de administracion.
+            </p>
+          </div>
+          <div className="hero-actions hero-stats">
+            <article className="hero-stat-chip">
+              <span>Equipos visibles</span>
+              <strong>{workgroups.length}</strong>
+            </article>
+            <article className="hero-stat-chip">
+              <span>Companeros</span>
+              <strong>{metrics.totalMembers}</strong>
+            </article>
+          </div>
+        </motion.section>
+
+        <motion.section className="two-column-grid align-start-grid workgroup-detail-grid" variants={staggerParent}>
+          <motion.article className="page-panel" variants={staggerItem}>
+            <div className="panel-headline">
+              <div>
+                <p className="eyebrow">Tu espacio</p>
+                <h2>{selectedGroup?.name || 'Aun no perteneces a un equipo'}</h2>
+              </div>
+            </div>
+
+            {selectedGroup ? (
+              <>
+                <div className="signal-row workgroup-signal-row">
+                  <span className="tag subtle-tag">{selectedGroup.code}</span>
+                  <span className="tag subtle-tag">{visibilityLabel(selectedGroup.security)}</span>
+                  <span className="tag subtle-tag">{selectedGroup.lead}</span>
+                </div>
+                <p className="body-copy">{selectedGroup.summary}</p>
+                <div className="project-pill-grid">
+                  {(selectedGroup.projectIds || []).map((projectId) => {
+                    const project = projects.find((item) => item.id === projectId);
+                    return (
+                      <span key={projectId} className="project-pill active">
+                        <strong>{project?.code || 'PX'}</strong>
+                        <span>{project?.name || projectId}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="empty-state subtle-empty-state">
+                <p className="body-copy">Cuando aceptes una invitacion de equipo, tus companeros apareceran aqui.</p>
+              </div>
+            )}
+          </motion.article>
+
+          <motion.article className="page-panel" variants={staggerItem}>
+            <div className="panel-headline">
+              <div>
+                <p className="eyebrow">Companeros</p>
+                <h2>Personas visibles en tu equipo</h2>
+              </div>
+            </div>
+
+            <div className="card-list compact-card-list">
+              {(selectedGroup?.members || []).map((member) => (
+                <article key={member.id} className="detail-card">
+                  <div className="detail-card-top">
+                    <span className="tag">{member.role === 'Group Lead' ? 'Responsable' : 'Miembro'}</span>
+                    <span>{member.status}</span>
+                  </div>
+                  <h3>{member.name}</h3>
+                  <p className="body-copy">{member.email || 'Cuenta vinculada al espacio.'}</p>
+                </article>
+              ))}
+            </div>
+          </motion.article>
+        </motion.section>
+      </motion.div>
+    );
+  }
 
   function updateGroupForm(name, value) {
     setGroupForm((current) => ({
@@ -255,8 +340,8 @@ export default function GroupsPage() {
         <motion.article className="page-panel sticky-panel" variants={staggerItem}>
           <div className="panel-headline">
             <div>
-              <p className="eyebrow">Nuevo equipo</p>
-              <h2>Crea un equipo con responsables claros</h2>
+              <p className="eyebrow">{isAdmin ? 'Nuevo equipo' : 'Tu equipo'}</p>
+              <h2>{isAdmin ? 'Crea un equipo con responsables claros' : 'Vista de companeros y responsable'}</h2>
             </div>
           </div>
 
@@ -329,7 +414,7 @@ export default function GroupsPage() {
           ) : (
             <div className="empty-state subtle-empty-state">
               <p className="body-copy">
-                Puedes revisar los equipos en los que participas. La creacion y reasignacion queda disponible para cuentas administradoras.
+                Aqui solo ves a tus companeros, el responsable y los proyectos vinculados. La gestion del equipo queda reservada para cuentas administradoras.
               </p>
             </div>
           )}
@@ -360,97 +445,137 @@ export default function GroupsPage() {
               ) : null}
             </div>
 
-            <div className="group-editor-grid">
-              <label className="field">
-                Enfoque
-                <input
-                  value={groupDraft.focus || ''}
-                  disabled={!isAdmin}
-                  onChange={(event) =>
-                    setGroupDraft((current) => ({
-                      ...current,
-                      focus: sanitizePlainText(event.target.value)
-                    }))
-                  }
-                />
-              </label>
-              <label className="field">
-                Ritmo
-                <input
-                  value={groupDraft.cadence || ''}
-                  disabled={!isAdmin}
-                  onChange={(event) =>
-                    setGroupDraft((current) => ({
-                      ...current,
-                      cadence: sanitizePlainText(event.target.value)
-                    }))
-                  }
-                />
-              </label>
-              <label className="field">
-                Visibilidad
-                <select
-                  value={groupDraft.security || 'Restricted'}
-                  disabled={!isAdmin}
-                  onChange={(event) =>
-                    setGroupDraft((current) => ({
-                      ...current,
-                      security: event.target.value
-                    }))
-                  }
-                >
-                  <option value="Internal">Interno</option>
-                  <option value="Restricted">Solo equipo</option>
-                  <option value="Confidential">Reservado</option>
-                </select>
-              </label>
-            </div>
+            {isAdmin ? (
+              <>
+                <div className="group-editor-grid">
+                  <label className="field">
+                    Enfoque
+                    <input
+                      value={groupDraft.focus || ''}
+                      disabled={!isAdmin}
+                      onChange={(event) =>
+                        setGroupDraft((current) => ({
+                          ...current,
+                          focus: sanitizePlainText(event.target.value)
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Ritmo
+                    <input
+                      value={groupDraft.cadence || ''}
+                      disabled={!isAdmin}
+                      onChange={(event) =>
+                        setGroupDraft((current) => ({
+                          ...current,
+                          cadence: sanitizePlainText(event.target.value)
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Visibilidad
+                    <select
+                      value={groupDraft.security || 'Restricted'}
+                      disabled={!isAdmin}
+                      onChange={(event) =>
+                        setGroupDraft((current) => ({
+                          ...current,
+                          security: event.target.value
+                        }))
+                      }
+                    >
+                      <option value="Internal">Interno</option>
+                      <option value="Restricted">Solo equipo</option>
+                      <option value="Confidential">Reservado</option>
+                    </select>
+                  </label>
+                </div>
 
-            <label className="field">
-              Descripcion
-              <textarea
-                rows="4"
-                value={groupDraft.summary || ''}
-                disabled={!isAdmin}
-                onChange={(event) =>
-                  setGroupDraft((current) => ({
-                    ...current,
-                    summary: sanitizeMultilineText(event.target.value)
-                  }))
-                }
-              />
-            </label>
-
-            <div className="project-selector">
-              <span className="field-label">Proyectos relacionados</span>
-              <div className="project-pill-grid">
-                {projects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
+                <label className="field">
+                  Descripcion
+                  <textarea
+                    rows="4"
+                    value={groupDraft.summary || ''}
                     disabled={!isAdmin}
-                    className={(groupDraft.projectIds || []).includes(project.id) ? 'project-pill active' : 'project-pill'}
-                    onClick={() =>
+                    onChange={(event) =>
                       setGroupDraft((current) => ({
                         ...current,
-                        projectIds: (current.projectIds || []).includes(project.id)
-                          ? current.projectIds.filter((item) => item !== project.id)
-                          : [...(current.projectIds || []), project.id]
+                        summary: sanitizeMultilineText(event.target.value)
                       }))
                     }
-                  >
-                    <strong>{project.code}</strong>
-                    <span>{project.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                  />
+                </label>
 
-            <div className="signal-row workgroup-signal-row">
-              <span className="tag subtle-tag">{selectedGroup.code}</span>
-              <span className="tag subtle-tag">{visibilityLabel(groupDraft.security || selectedGroup.security)}</span>
-              <span className="tag subtle-tag">{selectedGroup.lead}</span>
-            </div>
+                <div className="project-selector">
+                  <span className="field-label">Proyectos relacionados</span>
+                  <div className="project-pill-grid">
+                    {projects.map((project) => (
+                      <button
+                        key={project.id}
+                        type="button"
+                        disabled={!isAdmin}
+                        className={(groupDraft.projectIds || []).includes(project.id) ? 'project-pill active' : 'project-pill'}
+                        onClick={() =>
+                          setGroupDraft((current) => ({
+                            ...current,
+                            projectIds: (current.projectIds || []).includes(project.id)
+                              ? current.projectIds.filter((item) => item !== project.id)
+                              : [...(current.projectIds || []), project.id]
+                          }))
+                        }
+                      >
+                        <strong>{project.code}</strong>
+                        <span>{project.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="signal-row workgroup-signal-row">
+                  <span className="tag subtle-tag">{selectedGroup.code}</span>
+                  <span className="tag subtle-tag">{visibilityLabel(groupDraft.security || selectedGroup.security)}</span>
+                  <span className="tag subtle-tag">{selectedGroup.lead}</span>
+                </div>
+              </>
+            ) : (
+              <div className="members-summary-stack">
+                <article className="detail-card">
+                  <div className="detail-card-top">
+                    <span className="tag subtle-tag">Responsable</span>
+                  </div>
+                  <h3>{selectedGroup.lead}</h3>
+                  <p className="body-copy">La persona que coordina el trabajo y toma decisiones del equipo.</p>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-top">
+                    <span className="tag subtle-tag">Enfoque</span>
+                  </div>
+                  <h3>{groupDraft.focus || selectedGroup.focus}</h3>
+                  <p className="body-copy">{groupDraft.summary || selectedGroup.summary || 'Este equipo mantiene alineado su trabajo desde un mismo espacio.'}</p>
+                </article>
+                <article className="detail-card">
+                  <div className="detail-card-top">
+                    <span className="tag subtle-tag">Proyectos relacionados</span>
+                  </div>
+                  <div className="signal-row">
+                    {(selectedGroup.projectIds || []).length ? (
+                      (selectedGroup.projectIds || []).map((projectId) => {
+                        const project = projects.find((item) => item.id === projectId);
+                        return (
+                          <span key={projectId} className="tag subtle-tag">
+                            {project?.name || projectId}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <span className="tag subtle-tag">Sin proyectos vinculados</span>
+                    )}
+                  </div>
+                </article>
+              </div>
+            )}
           </motion.article>
 
           <motion.article className="page-panel" variants={staggerItem}>

@@ -43,6 +43,9 @@ public class AuthService {
     private final WorkGroupService workGroupService;
     private final ViewMapper viewMapper;
     private final SecurityProperties securityProperties;
+    private final RecoveryPhraseService recoveryPhraseService;
+    private final PasswordRecoveryService passwordRecoveryService;
+    private final TeamInvitationService teamInvitationService;
 
     public AuthService(
         AppUserRepository appUserRepository,
@@ -55,7 +58,10 @@ public class AuthService {
         BruteForceProtectionService bruteForceProtectionService,
         WorkGroupService workGroupService,
         ViewMapper viewMapper,
-        SecurityProperties securityProperties
+        SecurityProperties securityProperties,
+        RecoveryPhraseService recoveryPhraseService,
+        PasswordRecoveryService passwordRecoveryService,
+        TeamInvitationService teamInvitationService
     ) {
         this.appUserRepository = appUserRepository;
         this.loginAttemptRepository = loginAttemptRepository;
@@ -68,6 +74,9 @@ public class AuthService {
         this.workGroupService = workGroupService;
         this.viewMapper = viewMapper;
         this.securityProperties = securityProperties;
+        this.recoveryPhraseService = recoveryPhraseService;
+        this.passwordRecoveryService = passwordRecoveryService;
+        this.teamInvitationService = teamInvitationService;
     }
 
     public ViewModels.AuthView register(AuthRequests.RegisterRequest request, HttpServletRequest httpRequest, HttpServletResponse response) {
@@ -82,22 +91,33 @@ public class AuthService {
             throw new ResponseStatusException(BAD_REQUEST, "Name is required.");
         }
 
+        RoleName requestedRole = "ADMINISTRADOR".equals(request.accountType()) ? RoleName.ADMINISTRADOR : RoleName.MIEMBRO_PROYECTO;
         String team = inputSanitizer.sanitizePlainText(request.team());
         if (team.isBlank()) {
-            team = "General Delivery";
+            team = "Sin equipo";
+        }
+        if (requestedRole == RoleName.MIEMBRO_PROYECTO && (request.inviteToken() == null || request.inviteToken().isBlank())) {
+            team = "Sin equipo";
         }
 
         AppUser user = new AppUser();
+        String recoveryPhrase = recoveryPhraseService.generate();
         user.setName(name);
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setRecoveryPhraseHash(passwordEncoder.encode(recoveryPhrase));
+        user.setRecoveryPhraseIssuedAt(Instant.now());
         user.setTeam(team);
-        user.setRole(RoleName.MIEMBRO_PROYECTO);
+        user.setRole(requestedRole);
         user.setEnabled(true);
         user = appUserRepository.save(user);
-        workGroupService.ensureRegistrationMembership(user, team);
+        if (requestedRole == RoleName.ADMINISTRADOR) {
+            // Team admins finish by creating their own team after account setup.
+        } else if (request.inviteToken() != null && !request.inviteToken().isBlank()) {
+            teamInvitationService.acceptInvitation(request.inviteToken(), user, workGroupService);
+        }
 
-        return loginInternal(user, httpRequest, response);
+        return loginInternal(user, httpRequest, response, recoveryPhrase);
     }
 
     public ViewModels.AuthView login(AuthRequests.LoginRequest request, HttpServletRequest httpRequest, HttpServletResponse response) {
@@ -118,7 +138,7 @@ public class AuthService {
 
         bruteForceProtectionService.recordSuccess(key);
         saveLoginAttempt(email, ip, true);
-        return loginInternal(user, httpRequest, response);
+        return loginInternal(user, httpRequest, response, null);
     }
 
     public ViewModels.AuthView refresh(HttpServletRequest request, HttpServletResponse response) {
@@ -129,7 +149,7 @@ public class AuthService {
 
         var token = refreshTokenService.verify(rawRefresh);
         refreshTokenService.revoke(rawRefresh, requestMetadataService.clientIp(request));
-        return loginInternal(token.getUser(), request, response);
+        return loginInternal(token.getUser(), request, response, null);
     }
 
     public void logout(HttpServletRequest request, HttpServletResponse response) {
@@ -141,7 +161,19 @@ public class AuthService {
         expireCookie(response, JwtAuthenticationFilter.REFRESH_COOKIE);
     }
 
-    private ViewModels.AuthView loginInternal(AppUser user, HttpServletRequest request, HttpServletResponse response) {
+    public ViewModels.PasswordRecoveryRequestView requestPasswordRecovery(AuthRequests.ForgotPasswordRequest request, HttpServletRequest httpRequest) {
+        return passwordRecoveryService.requestRecovery(request, httpRequest);
+    }
+
+    public ViewModels.PasswordResetTokenView validatePasswordRecoveryToken(String token) {
+        return passwordRecoveryService.validateToken(token);
+    }
+
+    public ViewModels.PasswordResetTokenView resetPasswordFromRecovery(AuthRequests.ResetPasswordRequest request, HttpServletRequest httpRequest) {
+        return passwordRecoveryService.resetPassword(request, httpRequest);
+    }
+
+    private ViewModels.AuthView loginInternal(AppUser user, HttpServletRequest request, HttpServletResponse response, String issuedRecoveryPhrase) {
         Instant now = Instant.now();
         AuthenticatedUser authenticatedUser = new AuthenticatedUser(
             user.getId(),
@@ -160,22 +192,30 @@ public class AuthService {
             requestMetadataService.userAgent(request)
         );
 
+        String recoveryPhraseToShow = issuedRecoveryPhrase;
+        if (recoveryPhraseToShow == null && (user.getRecoveryPhraseHash() == null || user.getRecoveryPhraseHash().isBlank())) {
+            recoveryPhraseToShow = recoveryPhraseService.generate();
+            user.setRecoveryPhraseHash(passwordEncoder.encode(recoveryPhraseToShow));
+            user.setRecoveryPhraseIssuedAt(now);
+        }
+
         user.setLastLoginAt(now);
         appUserRepository.save(user);
 
         addCookie(response, JwtAuthenticationFilter.ACCESS_COOKIE, accessToken, jwtService.getAccessTokenTtlSeconds(), true);
         addCookie(response, JwtAuthenticationFilter.REFRESH_COOKIE, refreshToken.rawValue(), securityProperties.getRefreshTokenTtlSeconds(), true);
 
-        ViewModels.UserView userView = new ViewModels.UserView(
-            user.getId().toString(),
-            user.getName(),
-            viewMapper.roleLabel(user.getRole()),
-            user.getTeam(),
-            user.getEmail(),
-            inputSanitizer.toInitials(user.getName())
-        );
+        ViewModels.UserView userView = viewMapper.toUserView(user);
 
-        return new ViewModels.AuthView(viewMapper.toSessionView(authenticatedUser), userView);
+        ViewModels.RecoveryKitView recoveryKit = recoveryPhraseToShow == null
+            ? null
+            : new ViewModels.RecoveryKitView(
+                recoveryPhraseToShow,
+                "Guarda tu clave de recuperacion",
+                "La necesitaras junto a tu correo si algun dia quieres restablecer tu contrasena."
+            );
+
+        return new ViewModels.AuthView(viewMapper.toSessionView(authenticatedUser), userView, recoveryKit);
     }
 
     private void validatePassword(String password) {

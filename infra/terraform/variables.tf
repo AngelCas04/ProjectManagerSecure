@@ -202,6 +202,48 @@ variable "app_cookie_same_site" {
   default     = "None"
 }
 
+variable "recovery_frontend_base_url" {
+  description = "Frontend base URL used in password recovery and invitation emails."
+  type        = string
+  default     = "https://pm-collab-secure-20260319.vercel.app"
+}
+
+variable "recovery_sender_address" {
+  description = "Sender email address for recovery and invitation emails."
+  type        = string
+  default     = "ac8085187@gmail.com"
+}
+
+variable "recovery_sender_name" {
+  description = "Friendly sender name for recovery and invitation emails."
+  type        = string
+  default     = "Project Manager"
+}
+
+variable "mail_host" {
+  description = "SMTP host for transactional emails."
+  type        = string
+  default     = "smtp.gmail.com"
+}
+
+variable "mail_port" {
+  description = "SMTP port for transactional emails."
+  type        = number
+  default     = 587
+}
+
+variable "mail_username" {
+  description = "SMTP username for transactional emails."
+  type        = string
+  default     = "ac8085187@gmail.com"
+}
+
+variable "mail_password" {
+  description = "SMTP password or app password for transactional emails."
+  type        = string
+  sensitive   = true
+}
+
 variable "db_instance_class" {
   description = "RDS instance class."
   type        = string

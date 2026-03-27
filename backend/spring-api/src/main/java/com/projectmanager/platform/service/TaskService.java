@@ -2,6 +2,7 @@ package com.projectmanager.platform.service;
 
 import com.projectmanager.platform.api.TaskRequests;
 import com.projectmanager.platform.api.ViewModels;
+import com.projectmanager.platform.domain.Project;
 import com.projectmanager.platform.domain.TaskItem;
 import com.projectmanager.platform.domain.TaskPriority;
 import com.projectmanager.platform.domain.TaskStatus;
@@ -20,6 +21,7 @@ public class TaskService {
 
     private final TaskItemRepository taskItemRepository;
     private final ProjectAccessService projectAccessService;
+    private final ProjectParticipantService projectParticipantService;
     private final ViewMapper viewMapper;
     private final AuditService auditService;
     private final InputSanitizer inputSanitizer;
@@ -27,19 +29,21 @@ public class TaskService {
     public TaskService(
         TaskItemRepository taskItemRepository,
         ProjectAccessService projectAccessService,
+        ProjectParticipantService projectParticipantService,
         ViewMapper viewMapper,
         AuditService auditService,
         InputSanitizer inputSanitizer
     ) {
         this.taskItemRepository = taskItemRepository;
         this.projectAccessService = projectAccessService;
+        this.projectParticipantService = projectParticipantService;
         this.viewMapper = viewMapper;
         this.auditService = auditService;
         this.inputSanitizer = inputSanitizer;
     }
 
     public ViewModels.TaskView createTask(TaskRequests.CreateTaskRequest request, AuthenticatedUser user) {
-        var project = projectAccessService.requireProjectAccess(request.projectId(), user);
+        Project project = projectAccessService.requireProjectAccess(request.projectId(), user);
 
         TaskItem task = new TaskItem();
         task.setProject(project);
@@ -48,7 +52,7 @@ public class TaskService {
         task.setPriority(TaskPriority.valueOf(request.priority().toUpperCase()));
         task.setStatus(TaskStatus.valueOf(request.status()));
         task.setDueDate(request.dueDate());
-        task.setAssignee(inputSanitizer.sanitizePlainText(request.assignee()));
+        task.setAssignee(projectParticipantService.resolveProjectParticipant(project, request.assignee(), "Assignee"));
         taskItemRepository.save(task);
 
         auditService.record(project, "Task", user.displayName(), "Created task " + task.getTitle() + ".");

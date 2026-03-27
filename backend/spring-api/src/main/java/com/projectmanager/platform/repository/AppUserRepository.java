@@ -13,4 +13,5 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     boolean existsByEmail(String email);
     List<AppUser> findAllByEnabledTrueOrderByNameAsc();
     List<AppUser> findByIdInAndEnabledTrueOrderByNameAsc(Collection<UUID> ids);
+    List<AppUser> findByEmailIn(Collection<String> emails);
 }

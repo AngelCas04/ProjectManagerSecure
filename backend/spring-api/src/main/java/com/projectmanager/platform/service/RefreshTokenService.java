@@ -12,6 +12,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
@@ -53,6 +54,14 @@ public class RefreshTokenService {
             return;
         }
         refreshTokenRepository.findByTokenHash(hash(rawToken)).ifPresent(token -> {
+            token.setRevokedAt(Instant.now());
+            token.setReplacedByIp(ipAddress);
+            refreshTokenRepository.save(token);
+        });
+    }
+
+    public void revokeAllForUser(UUID userId, String ipAddress) {
+        refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull(userId).forEach(token -> {
             token.setRevokedAt(Instant.now());
             token.setReplacedByIp(ipAddress);
             refreshTokenRepository.save(token);

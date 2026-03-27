@@ -4,6 +4,7 @@ import com.projectmanager.platform.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,6 +42,43 @@ public class AuthController {
     @PostMapping("/refresh")
     public ViewModels.AuthView refresh(HttpServletRequest request, HttpServletResponse response) {
         return authService.refresh(request, response);
+    }
+
+    @PostMapping("/password-recovery/request")
+    public ViewModels.PasswordRecoveryRequestView requestRecovery(
+        @Valid @RequestBody AuthRequests.ForgotPasswordRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return authService.requestPasswordRecovery(request, httpRequest);
+    }
+
+    @PostMapping("/forgot-password")
+    public ViewModels.PasswordRecoveryRequestView requestRecoveryAlias(
+        @Valid @RequestBody AuthRequests.ForgotPasswordRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return authService.requestPasswordRecovery(request, httpRequest);
+    }
+
+    @GetMapping("/password-recovery/validate")
+    public ViewModels.PasswordResetTokenView validateRecoveryToken(@RequestParam String token) {
+        return authService.validatePasswordRecoveryToken(token);
+    }
+
+    @PostMapping("/password-recovery/reset")
+    public ViewModels.PasswordResetTokenView resetPassword(
+        @Valid @RequestBody AuthRequests.ResetPasswordRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return authService.resetPasswordFromRecovery(request, httpRequest);
+    }
+
+    @PostMapping("/reset-password")
+    public ViewModels.PasswordResetTokenView resetPasswordAlias(
+        @Valid @RequestBody AuthRequests.ResetPasswordRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        return authService.resetPasswordFromRecovery(request, httpRequest);
     }
 
     @PostMapping("/logout")

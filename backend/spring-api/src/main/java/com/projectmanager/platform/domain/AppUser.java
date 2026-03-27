@@ -43,6 +43,14 @@ public class AppUser extends BaseEntity {
 
     private Instant lastLoginAt;
 
+    @Column(length = 120)
+    private String recoveryPhraseHash;
+
+    private Instant recoveryPhraseIssuedAt;
+
+    @Column(length = 200000)
+    private String avatarUrl;
+
     public UUID getId() {
         return id;
     }
@@ -101,5 +109,29 @@ public class AppUser extends BaseEntity {
 
     public void setLastLoginAt(Instant lastLoginAt) {
         this.lastLoginAt = lastLoginAt;
+    }
+
+    public String getRecoveryPhraseHash() {
+        return recoveryPhraseHash;
+    }
+
+    public void setRecoveryPhraseHash(String recoveryPhraseHash) {
+        this.recoveryPhraseHash = recoveryPhraseHash;
+    }
+
+    public Instant getRecoveryPhraseIssuedAt() {
+        return recoveryPhraseIssuedAt;
+    }
+
+    public void setRecoveryPhraseIssuedAt(Instant recoveryPhraseIssuedAt) {
+        this.recoveryPhraseIssuedAt = recoveryPhraseIssuedAt;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 }

@@ -10,13 +10,27 @@ public final class ViewModels {
     public record SessionView(String id, long issuedAt) {
     }
 
-    public record UserView(String id, String name, String role, String team, String email, String initials) {
+    public record RecoveryKitView(String passphrase, String title, String message) {
+    }
+
+    public record UserView(
+        String id,
+        String name,
+        String role,
+        String team,
+        String email,
+        String initials,
+        String avatarUrl,
+        boolean canManageMembers,
+        boolean needsTeamSetup,
+        String ownedWorkGroupId
+    ) {
     }
 
     public record AccessSignalView(String id, String title, String value, String note) {
     }
 
-    public record UserDirectoryView(String id, String name, String email, String role, String team, String initials) {
+    public record UserDirectoryView(String id, String name, String email, String role, String team, String initials, String avatarUrl) {
     }
 
     public record WorkGroupMemberView(
@@ -26,7 +40,33 @@ public final class ViewModels {
         String role,
         String membershipRole,
         String team,
-        String initials
+        String initials,
+        String avatarUrl
+    ) {
+    }
+
+    public record TeamInvitationView(
+        String id,
+        String email,
+        String status,
+        long sentAt,
+        long expiresAt
+    ) {
+    }
+
+    public record ManagedTeamView(
+        WorkGroupView team,
+        List<TeamInvitationView> invitations
+    ) {
+    }
+
+    public record TeamInvitationPreviewView(
+        boolean valid,
+        String email,
+        String teamName,
+        String inviterName,
+        boolean existingAccount,
+        String message
     ) {
     }
 
@@ -43,6 +83,17 @@ public final class ViewModels {
         List<String> projectIds,
         long members,
         List<WorkGroupMemberView> roster
+    ) {
+    }
+
+    public record ChatRoomView(
+        String id,
+        String workGroupId,
+        String projectId,
+        String name,
+        String description,
+        String slug,
+        boolean defaultRoom
     ) {
     }
 
@@ -93,6 +144,8 @@ public final class ViewModels {
     public record ChatMessageView(
         String id,
         String projectId,
+        String roomId,
+        String roomName,
         String author,
         String role,
         String time,
@@ -110,7 +163,13 @@ public final class ViewModels {
     ) {
     }
 
-    public record AuthView(SessionView session, UserView currentUser) {
+    public record AuthView(SessionView session, UserView currentUser, RecoveryKitView recoveryKit) {
+    }
+
+    public record PasswordRecoveryRequestView(String message) {
+    }
+
+    public record PasswordResetTokenView(boolean valid, String message) {
     }
 
     public record BootstrapView(
@@ -122,6 +181,7 @@ public final class ViewModels {
         List<ChatMessageView> messages,
         List<TimelineEntryView> timeline,
         List<WorkGroupView> workGroups,
+        List<ChatRoomView> chatRooms,
         List<UserDirectoryView> userDirectory,
         List<AccessSignalView> accessFeed,
         List<String> workspaceHighlights,

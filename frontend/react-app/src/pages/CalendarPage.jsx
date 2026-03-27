@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useI18n } from '../context/I18nContext';
 import { sanitizePlainText, validateEventForm } from '../utils/security';
+import { getProjectMembers, getWorkspaceMembers } from '../utils/team';
 
 const initialEventForm = {
   projectId: '',
@@ -13,18 +14,49 @@ const initialEventForm = {
   owner: ''
 };
 
+function buildMonthMatrix(referenceDate) {
+  const startOfMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+  const start = new Date(startOfMonth);
+  const dayOfWeek = (startOfMonth.getDay() + 6) % 7;
+  start.setDate(start.getDate() - dayOfWeek);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const cellDate = new Date(start);
+    cellDate.setDate(start.getDate() + index);
+    return cellDate;
+  });
+}
+
+function isoDate(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function monthLabel(value) {
+  return new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' }).format(value);
+}
+
+function shortWeekdayLabel(value) {
+  return new Intl.DateTimeFormat('es-GT', { weekday: 'short' }).format(value);
+}
+
 export default function CalendarPage() {
-  const { createEvent, events, projects } = useAppContext();
+  const { createEvent, currentUser, events, projects, userDirectory, workgroups } = useAppContext();
   const { translate } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [submitted, setSubmitted] = useState(false);
+  const [viewMode, setViewMode] = useState('agenda');
+  const [monthAnchor, setMonthAnchor] = useState(() => new Date());
   const [form, setForm] = useState(() => ({
     ...initialEventForm,
-    projectId: searchParams.get('project') || projects[0]?.id || ''
+    projectId: searchParams.get('project') || ''
   }));
 
   const activeProjectId = searchParams.get('project') || 'all';
   const errors = useMemo(() => validateEventForm(form), [form]);
+  const ownerOptions = useMemo(() => {
+    const scoped = getProjectMembers(workgroups, form.projectId || activeProjectId);
+    return scoped.length ? scoped : getWorkspaceMembers(workgroups, currentUser, userDirectory);
+  }, [activeProjectId, currentUser, form.projectId, userDirectory, workgroups]);
 
   const groupedEvents = useMemo(() => {
     const scopedEvents = (activeProjectId === 'all' ? events : events.filter((event) => event.projectId === activeProjectId))
@@ -40,6 +72,16 @@ export default function CalendarPage() {
       return groups;
     }, {});
   }, [activeProjectId, events]);
+
+  const monthCells = useMemo(() => buildMonthMatrix(monthAnchor), [monthAnchor]);
+  const eventsByDate = useMemo(
+    () =>
+      Object.entries(groupedEvents).reduce((lookup, [date, dayEvents]) => {
+        lookup[date] = dayEvents;
+        return lookup;
+      }, {}),
+    [groupedEvents]
+  );
 
   function updateField(name, value) {
     setForm((current) => ({
@@ -70,12 +112,28 @@ export default function CalendarPage() {
 
   return (
     <div className="page-stack">
+      <section className="page-panel calendar-hero">
+        <div>
+          <p className="eyebrow">Calendario</p>
+          <h2>Fechas, reuniones y entregas con dos formas de lectura</h2>
+          <p className="body-copy">Usa la agenda para revisar el flujo de la semana o cambia al mes para planificar como un calendario clasico.</p>
+        </div>
+        <div className="calendar-mode-switch">
+          <button type="button" className={viewMode === 'agenda' ? 'ghost-button active-view' : 'ghost-button'} onClick={() => setViewMode('agenda')}>
+            Agenda
+          </button>
+          <button type="button" className={viewMode === 'month' ? 'ghost-button active-view' : 'ghost-button'} onClick={() => setViewMode('month')}>
+            Mes
+          </button>
+        </div>
+      </section>
+
       <section className="two-column-grid align-start-grid">
         <article className="page-panel">
           <div className="panel-headline">
             <div>
-              <p className="eyebrow">Calendario</p>
-              <h2>Fechas, reuniones y entregas del equipo</h2>
+              <p className="eyebrow">Vista del calendario</p>
+              <h2>{viewMode === 'agenda' ? 'Agenda operativa del equipo' : 'Mes completo de trabajo'}</h2>
             </div>
             <label className="field compact-field wide-field">
               {translate('Filter project')}
@@ -100,37 +158,86 @@ export default function CalendarPage() {
             </label>
           </div>
 
-          <div className="agenda-list">
-            {Object.entries(groupedEvents).map(([date, dayEvents]) => (
-              <section key={date} className="agenda-day">
-                <div className="agenda-day-head">
-                  <p className="eyebrow">{date}</p>
-                  <h3>{dayEvents.length} eventos</h3>
+          {viewMode === 'agenda' ? (
+            <div className="agenda-list">
+              {Object.entries(groupedEvents).length ? (
+                Object.entries(groupedEvents).map(([date, dayEvents]) => (
+                  <section key={date} className="agenda-day">
+                    <div className="agenda-day-head">
+                      <p className="eyebrow">{date}</p>
+                      <h3>{dayEvents.length} eventos</h3>
+                    </div>
+                    <div className="card-list compact-card-list">
+                      {dayEvents.map((entry) => (
+                        <article key={entry.id} className="detail-card">
+                          <div className="detail-card-top">
+                            <span className="tag">{entry.time}</span>
+                            <span>{entry.type}</span>
+                          </div>
+                          <h3>{entry.title}</h3>
+                          <p className="body-copy">{entry.owner}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ))
+              ) : (
+                <div className="empty-state subtle-empty-state calendar-empty-state">
+                  <p className="body-copy">Todavia no hay eventos para este alcance. Crea uno desde el panel lateral y aparecera aqui.</p>
                 </div>
-                <div className="card-list compact-card-list">
-                  {dayEvents.map((event) => (
-                    <article key={event.id} className="detail-card">
-                      <div className="detail-card-top">
-                        <span className="tag">{event.time}</span>
-                        <span>{event.type}</span>
+              )}
+            </div>
+          ) : (
+            <div className="calendar-month-shell">
+              <div className="calendar-month-toolbar">
+                <button type="button" className="ghost-button" onClick={() => setMonthAnchor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>
+                  Mes anterior
+                </button>
+                <strong>{monthLabel(monthAnchor)}</strong>
+                <button type="button" className="ghost-button" onClick={() => setMonthAnchor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}>
+                  Mes siguiente
+                </button>
+              </div>
+              <div className="calendar-month-weekdays">
+                {monthCells.slice(0, 7).map((cellDate) => (
+                  <span key={shortWeekdayLabel(cellDate)}>{shortWeekdayLabel(cellDate)}</span>
+                ))}
+              </div>
+              <div className="calendar-month-grid">
+                {monthCells.map((cellDate) => {
+                  const dateKey = isoDate(cellDate);
+                  const dayEvents = eventsByDate[dateKey] || [];
+                  const isCurrentMonth = cellDate.getMonth() === monthAnchor.getMonth();
+
+                  return (
+                    <article key={dateKey} className={isCurrentMonth ? 'calendar-day-card' : 'calendar-day-card outside-month'}>
+                      <div className="calendar-day-top">
+                        <strong>{cellDate.getDate()}</strong>
+                        {dayEvents.length ? <span className="tag subtle-tag">{dayEvents.length}</span> : null}
                       </div>
-                      <h3>{event.title}</h3>
-                      <p className="body-copy">{event.owner}</p>
+                      <div className="calendar-day-events">
+                        {dayEvents.slice(0, 3).map((entry) => (
+                          <div key={entry.id} className="calendar-day-pill">
+                            <span>{entry.time}</span>
+                            <strong>{entry.title}</strong>
+                          </div>
+                        ))}
+                      </div>
                     </article>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </article>
 
         <article className="page-panel sticky-panel">
-            <div className="panel-headline">
-              <div>
+          <div className="panel-headline">
+            <div>
               <p className="eyebrow">Nuevo evento</p>
               <h2>Agrega una fecha importante</h2>
-              </div>
             </div>
+          </div>
 
           <form className="form-stack" onSubmit={handleSubmit}>
             <label className="field">
@@ -179,7 +286,15 @@ export default function CalendarPage() {
 
               <label className="field">
                 {translate('Owner')}
-                <input value={form.owner} onChange={(event) => updateField('owner', event.target.value)} />
+                <select value={form.owner} onChange={(event) => updateField('owner', event.target.value)}>
+                  <option value="">Selecciona a una persona</option>
+                  {ownerOptions.map((member) => (
+                    <option key={member.id || member.email || member.name} value={member.name}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+                {submitted && errors.owner ? <span className="field-error">{translate(errors.owner)}</span> : null}
               </label>
             </div>
 

@@ -1,6 +1,29 @@
 import { useI18n } from '../../context/I18nContext';
+import { toInitials } from '../../utils/security';
 
-export function BoardColumn({ status, tasks, projectLookup, onDropTask, onDragTask, onMoveTask }) {
+function toneForPriority(priority) {
+  switch (priority) {
+    case 'Critical':
+      return 'critical';
+    case 'High':
+      return 'high';
+    case 'Low':
+      return 'low';
+    default:
+      return 'medium';
+  }
+}
+
+function memberAvatar(teamMembers, assignee) {
+  const matched = teamMembers.find((member) => member.name === assignee);
+  if (matched?.avatarUrl) {
+    return <img src={matched.avatarUrl} alt={`Foto de ${assignee}`} />;
+  }
+
+  return toInitials(assignee || 'PM');
+}
+
+export function BoardColumn({ status, tasks, projectLookup, teamMembers = [], onDropTask, onDragTask, onMoveTask }) {
   const { translate } = useI18n();
 
   return (
@@ -26,12 +49,15 @@ export function BoardColumn({ status, tasks, projectLookup, onDropTask, onDragTa
           >
             <div className="task-card-top">
               <span className="tag">{projectLookup[task.projectId]?.code || 'PX'}</span>
-              <span className="task-priority">{translate(task.priority)}</span>
+              <span className={`task-priority priority-${toneForPriority(task.priority)}`}>{translate(task.priority)}</span>
             </div>
             <h4>{task.title}</h4>
             <p className="body-copy">{task.description}</p>
             <div className="task-card-meta">
-              <span>{task.assignee}</span>
+              <span className="task-assignee-chip">
+                <span className="task-assignee-avatar">{memberAvatar(teamMembers, task.assignee)}</span>
+                {task.assignee}
+              </span>
               <span>{task.dueDate}</span>
             </div>
             <label className="field compact-field">

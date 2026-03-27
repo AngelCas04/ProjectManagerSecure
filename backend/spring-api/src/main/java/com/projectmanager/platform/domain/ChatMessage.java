@@ -15,7 +15,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "chat_message", indexes = {
     @Index(name = "idx_chat_project_created", columnList = "project_id,created_at"),
-    @Index(name = "idx_chat_team_project_created", columnList = "chat_team,project_id,created_at")
+    @Index(name = "idx_chat_room_created", columnList = "room_id,created_at"),
+    @Index(name = "idx_chat_team_room_created", columnList = "chat_team,room_id,created_at")
 })
 public class ChatMessage extends BaseEntity {
 
@@ -23,9 +24,13 @@ public class ChatMessage extends BaseEntity {
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "project_id")
     private Project project;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_id")
+    private ChatRoom room;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "author_id", nullable = false)
@@ -47,6 +52,14 @@ public class ChatMessage extends BaseEntity {
 
     public void setProject(Project project) {
         this.project = project;
+    }
+
+    public ChatRoom getRoom() {
+        return room;
+    }
+
+    public void setRoom(ChatRoom room) {
+        this.room = room;
     }
 
     public AppUser getAuthor() {

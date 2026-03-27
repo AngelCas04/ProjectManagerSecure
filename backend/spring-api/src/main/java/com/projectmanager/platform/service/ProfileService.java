@@ -59,6 +59,7 @@ public class ProfileService {
 
         user.setName(sanitizedName);
         user.setEmail(nextEmail);
+        user.setAvatarUrl(sanitizeAvatarUrl(request.avatarUrl()));
         if (currentUser.isAdmin()) {
             user.setTeam(sanitizedTeam);
             user.setRole("Administrador".equals(request.role()) ? RoleName.ADMINISTRADOR : RoleName.MIEMBRO_PROYECTO);
@@ -70,5 +71,22 @@ public class ProfileService {
         }
         auditService.record(null, "Profile", user.getName(), "Updated account profile preferences.");
         return viewMapper.toUserView(user);
+    }
+
+    private String sanitizeAvatarUrl(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            return null;
+        }
+
+        String trimmed = avatarUrl.trim();
+        if (!trimmed.startsWith("data:image/")) {
+            throw new ResponseStatusException(BAD_REQUEST, "Avatar image format is not supported.");
+        }
+
+        if (trimmed.length() > 200000) {
+            throw new ResponseStatusException(BAD_REQUEST, "Avatar image is too large.");
+        }
+
+        return trimmed;
     }
 }

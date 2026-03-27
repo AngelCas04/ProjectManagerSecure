@@ -17,6 +17,7 @@ const initialState = {
   projects: [],
   tasks: [],
   events: [],
+  chatRooms: [],
   messages: [],
   workgroups: [],
   userDirectory: [],
@@ -55,6 +56,7 @@ function appReducer(state, action) {
         projects: [],
         tasks: [],
         events: [],
+        chatRooms: [],
         messages: [],
         workgroups: [],
         userDirectory: [],
@@ -101,65 +103,7 @@ function createFallbackWorkgroups(projects, currentUser, existingGroups = []) {
     return existingGroups;
   }
 
-  if (!projects.length) {
-    if (!currentUser) {
-      return [];
-    }
-
-    return [
-      {
-        id: `group-starter-${currentUser.id || 'local'}`,
-        code: 'GRP-START',
-        name: currentUser.team || `${currentUser.name} Equipo`,
-        summary: 'Tu equipo ya esta listo para empezar. Vincula personas y proyectos para ordenar el trabajo desde el primer dia.',
-        lead: currentUser.name || 'Responsable del equipo',
-        focus: 'Inicio del equipo',
-        security: 'Restricted',
-        cadence: 'Semanal',
-        projectIds: [],
-        members: [
-          {
-            id: currentUser.id || 'starter-member',
-            name: currentUser.name || 'Responsable del equipo',
-            email: currentUser.email || '',
-            role: 'Group Lead',
-            status: 'Activo',
-            team: currentUser.team || ''
-          }
-        ]
-      }
-    ];
-  }
-
-  return projects.slice(0, 3).map((project, index) => ({
-    id: `group-${project.id}`,
-    code: `GRP-${String(index + 1).padStart(2, '0')}`,
-    name: `${project.domain} Team`,
-    summary: `Coordina responsables, ritmo de trabajo y seguimiento para ${project.name}.`,
-    lead: project.lead,
-    focus: project.domain,
-    security: project.classification || 'Restricted',
-    cadence: index === 0 ? 'Dos veces por semana' : 'Semanal',
-    projectIds: [project.id],
-    members: [
-      {
-        id: `lead-${project.id}`,
-        name: project.lead,
-        email: '',
-        role: 'Group Lead',
-        status: 'Activo',
-        team: project.domain
-      },
-      {
-        id: `owner-${project.id}`,
-        name: currentUser?.name || 'Responsable del equipo',
-        email: currentUser?.email || '',
-        role: 'Coordinator',
-        status: 'Activo',
-        team: currentUser?.team || ''
-      }
-    ]
-  }));
+  return [];
 }
 
 function normalizeMembershipRole(value = '') {
@@ -203,7 +147,8 @@ function normalizeDirectoryUser(entry) {
     email: entry.email,
     role: entry.role,
     team: entry.team,
-    initials: entry.initials
+    initials: entry.initials,
+    avatarUrl: entry.avatarUrl || ''
   };
 }
 
@@ -223,7 +168,8 @@ function normalizeRemoteMember(member) {
     email: member.email || '',
     role: normalizeMembershipRole(member.membershipRole || member.role),
     status: normalizeMembershipStatus(member.status),
-    team: member.team || ''
+    team: member.team || '',
+    avatarUrl: member.avatarUrl || ''
   };
 }
 
@@ -231,31 +177,11 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeProjectIds(group, projects, members) {
-  const explicitIds = asArray(group.projectIds);
-  if (explicitIds.length) {
-    return explicitIds;
-  }
-
-  const memberNames = new Set(members.map((member) => member.name).filter(Boolean));
-  const memberTeams = new Set(members.map((member) => member.team).filter(Boolean));
-  const normalizedGroupName = String(group.name || '').toLowerCase();
-  const normalizedFocus = String(group.focus || '').toLowerCase();
-
-  return projects
-    .filter((project) => {
-      const projectDomain = String(project.domain || '').toLowerCase();
-      return (
-        memberNames.has(project.lead) ||
-        memberTeams.has(project.domain) ||
-        normalizedGroupName.includes(projectDomain) ||
-        normalizedFocus.includes(projectDomain)
-      );
-    })
-    .map((project) => project.id);
+function normalizeProjectIds(group) {
+  return asArray(group.projectIds);
 }
 
-function normalizeRemoteWorkgroup(group, currentUser, projects) {
+function normalizeRemoteWorkgroup(group, currentUser) {
   const members = asArray(group.roster).length
     ? asArray(group.roster).map(normalizeRemoteMember).filter(Boolean)
     : asArray(group.members).map(normalizeRemoteMember).filter(Boolean);
@@ -266,20 +192,20 @@ function normalizeRemoteWorkgroup(group, currentUser, projects) {
     code: group.code,
     name: group.name,
     summary: group.summary || group.description || '',
-    lead: group.lead || group.ownerName || leadMember?.name || currentUser?.name || 'Responsable del equipo',
-    focus: group.focus || group.name || 'Coordinacion del equipo',
-    security: group.visibility || group.security || 'Restricted',
-    cadence: group.cadence || 'Semanal',
-    projectIds: normalizeProjectIds(group, projects, members),
-    members
-  };
+      lead: group.lead || group.ownerName || leadMember?.name || currentUser?.name || 'Responsable del equipo',
+      focus: group.focus || group.name || 'Coordinacion del equipo',
+      security: group.visibility || group.security || 'Restricted',
+      cadence: group.cadence || 'Semanal',
+      projectIds: normalizeProjectIds(group),
+      members
+    };
 }
 
 function normalizeWorkgroups(payload, fallbackGroups) {
   const remoteGroups = payload.workgroups || payload.workGroups || payload.groups || [];
 
   if (remoteGroups.length) {
-    return remoteGroups.map((group) => normalizeRemoteWorkgroup(group, payload.currentUser, payload.projects || []));
+    return remoteGroups.map((group) => normalizeRemoteWorkgroup(group, payload.currentUser));
   }
 
   return createFallbackWorkgroups(payload.projects || [], payload.currentUser, fallbackGroups);
@@ -292,6 +218,7 @@ function normalizeBootstrap(payload, fallbackGroups = []) {
     projects: payload.projects || [],
     tasks: payload.tasks || [],
     events: payload.events || [],
+    chatRooms: payload.chatRooms || [],
     messages: payload.messages || [],
     workgroups: normalizeWorkgroups(payload, fallbackGroups),
     userDirectory: normalizeUserDirectory(payload),
@@ -307,7 +234,7 @@ function normalizeBootstrap(payload, fallbackGroups = []) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const wsRef = useRef(null);
-  const wsProjectIdRef = useRef('');
+  const wsRoomKeyRef = useRef('');
   const workgroupsRef = useRef([]);
 
   useEffect(() => {
@@ -320,34 +247,37 @@ export function AppProvider({ children }) {
     }
 
     try {
-      const [bootstrap, remoteWorkgroups, remoteDirectory] = await Promise.all([
-        api.fetchBootstrap(),
+      const bootstrap = await api.fetchBootstrap();
+      const [remoteWorkgroups, remoteDirectory] = await Promise.all([
         api.fetchWorkgroups(),
         api.fetchWorkgroupDirectory(),
         api.fetchCsrfToken()
       ]);
+      const normalized = normalizeBootstrap(
+        {
+          ...bootstrap,
+          workgroups: remoteWorkgroups || bootstrap.workgroups || bootstrap.workGroups || bootstrap.groups,
+          userDirectory: remoteDirectory || bootstrap.userDirectory || bootstrap.directory
+        },
+        workgroupsRef.current
+      );
       dispatch({
         type: 'HYDRATE_SUCCESS',
-        payload: normalizeBootstrap(
-          {
-            ...bootstrap,
-            workgroups: remoteWorkgroups || bootstrap.workgroups || bootstrap.workGroups || bootstrap.groups,
-            userDirectory: remoteDirectory || bootstrap.userDirectory || bootstrap.directory
-          },
-          workgroupsRef.current
-        )
+        payload: normalized
       });
+      return normalized;
     } catch (error) {
       if (error.status === 401) {
         closeChatSocket();
         dispatch({ type: 'SIGN_OUT' });
-        return;
+        return null;
       }
 
       dispatch({
         type: 'HYDRATE_ERROR',
         payload: error.message || 'No se pudo sincronizar el espacio.'
       });
+      throw error;
     }
   }
 
@@ -355,20 +285,26 @@ export function AppProvider({ children }) {
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
-      wsProjectIdRef.current = '';
+      wsRoomKeyRef.current = '';
     }
   }
 
-  function joinChatRoom(projectId) {
-    if (!state.session || !projectId || wsProjectIdRef.current === projectId) {
+  function joinChatRoom(projectId, roomId = '') {
+    const roomKey = `${projectId}:${roomId || 'default'}`;
+    if (!state.session || !projectId || wsRoomKeyRef.current === roomKey) {
       return;
     }
 
     closeChatSocket();
 
-    const socket = new WebSocket(api.websocketUrl(projectId));
+    const socketUrl = api.websocketUrl(projectId, roomId);
+    if (!socketUrl) {
+      return;
+    }
+
+    const socket = new WebSocket(socketUrl);
     wsRef.current = socket;
-    wsProjectIdRef.current = projectId;
+    wsRoomKeyRef.current = roomKey;
 
     socket.onmessage = (event) => {
       try {
@@ -382,7 +318,7 @@ export function AppProvider({ children }) {
     socket.onclose = () => {
       if (wsRef.current === socket) {
         wsRef.current = null;
-        wsProjectIdRef.current = '';
+        wsRoomKeyRef.current = '';
       }
     };
   }
@@ -397,15 +333,88 @@ export function AppProvider({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!state.session) {
+      return undefined;
+    }
+
+    const syncWorkspace = () => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        return;
+      }
+
+      startTransition(() => {
+        void hydrateWorkspace();
+      });
+    };
+
+    const intervalId = window.setInterval(syncWorkspace, 8000);
+    window.addEventListener('focus', syncWorkspace);
+    document.addEventListener('visibilitychange', syncWorkspace);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', syncWorkspace);
+      document.removeEventListener('visibilitychange', syncWorkspace);
+    };
+  }, [state.session?.id]);
+
   const value = useMemo(() => {
     async function signIn(payload) {
-      await api.signIn(payload);
-      await hydrateWorkspace({ showLoader: true });
+      const auth = await api.signIn(payload);
+      const workspace = await hydrateWorkspace({ showLoader: true });
+      return {
+        recoveryKit: auth?.recoveryKit || null,
+        currentUser: workspace?.currentUser || null
+      };
     }
 
     async function registerAccount(payload) {
-      await api.signUp(payload);
-      await hydrateWorkspace({ showLoader: true });
+      const registration = await api.signUp(payload);
+      const workspace = await hydrateWorkspace({ showLoader: true });
+      return {
+        recoveryKit: registration?.recoveryKit || null,
+        currentUser: workspace?.currentUser || null
+      };
+    }
+
+    async function fetchManagedTeam() {
+      return api.fetchManagedTeam();
+    }
+
+    async function setupManagedTeam(payload) {
+      const managedTeam = await api.setupManagedTeam(payload);
+      await hydrateWorkspace();
+      return managedTeam;
+    }
+
+    async function inviteManagedTeamMembers(payload) {
+      return api.inviteManagedTeamMembers(payload);
+    }
+
+    async function revokeManagedTeamInvitation(invitationId) {
+      return api.revokeManagedTeamInvitation(invitationId);
+    }
+
+    async function previewTeamInvitation(token) {
+      return api.previewTeamInvitation(token);
+    }
+
+    async function acceptTeamInvitation(token) {
+      await api.acceptTeamInvitation({ token });
+      return hydrateWorkspace({ showLoader: true });
+    }
+
+    async function requestPasswordRecovery(payload) {
+      return api.requestPasswordRecovery(payload);
+    }
+
+    async function validatePasswordResetToken(token) {
+      return api.validatePasswordResetToken(token);
+    }
+
+    async function resetPassword(payload) {
+      return api.resetPassword(payload);
     }
 
     async function signOut() {
@@ -439,7 +448,8 @@ export function AppProvider({ children }) {
     }
 
     async function sendMessage(payload) {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsProjectIdRef.current === payload.projectId) {
+      const roomKey = `${payload.projectId}:${payload.roomId || 'default'}`;
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsRoomKeyRef.current === roomKey) {
         wsRef.current.send(JSON.stringify(payload));
       } else {
         const message = await api.postMessage(payload);
@@ -454,6 +464,12 @@ export function AppProvider({ children }) {
     async function updateProfile(payload) {
       await api.updateProfile(payload);
       await hydrateWorkspace();
+    }
+
+    async function createChatRoom(payload) {
+      const room = await api.createChatRoom(payload);
+      await hydrateWorkspace();
+      return room;
     }
 
     async function createWorkgroup(payload) {
@@ -565,12 +581,22 @@ export function AppProvider({ children }) {
       ...state,
       signIn,
       registerAccount,
+      fetchManagedTeam,
+      setupManagedTeam,
+      inviteManagedTeamMembers,
+      revokeManagedTeamInvitation,
+      previewTeamInvitation,
+      acceptTeamInvitation,
+      requestPasswordRecovery,
+      validatePasswordResetToken,
+      resetPassword,
       signOut,
       createProject,
       createTask,
       moveTask,
       createEvent,
       sendMessage,
+      createChatRoom,
       updateProfile,
       createWorkgroup,
       updateWorkgroup,

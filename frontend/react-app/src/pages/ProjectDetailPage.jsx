@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { calculateProjectProgress } from '../utils/projects';
 import { sanitizeMultilineText, sanitizePlainText, validateTaskForm } from '../utils/security';
+import { getProjectMembers, getWorkspaceMembers } from '../utils/team';
 
 const initialTaskForm = {
   title: '',
@@ -15,7 +16,7 @@ const initialTaskForm = {
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams();
-  const { createTask, events, messages, projects, tasks, timeline } = useAppContext();
+  const { createTask, currentUser, events, messages, projects, tasks, timeline, userDirectory, workgroups } = useAppContext();
   const [form, setForm] = useState(initialTaskForm);
   const [submitted, setSubmitted] = useState(false);
 
@@ -26,6 +27,10 @@ export default function ProjectDetailPage() {
   const projectTimeline = useMemo(() => timeline.filter((entry) => entry.projectId === projectId), [projectId, timeline]);
   const progress = useMemo(() => calculateProjectProgress(tasks, projectId), [projectId, tasks]);
   const errors = useMemo(() => validateTaskForm({ ...form, projectId }), [form, projectId]);
+  const assigneeOptions = useMemo(() => {
+    const scoped = getProjectMembers(workgroups, projectId);
+    return scoped.length ? scoped : getWorkspaceMembers(workgroups, currentUser, userDirectory);
+  }, [currentUser, projectId, userDirectory, workgroups]);
 
   if (!project) {
     return (
@@ -153,7 +158,14 @@ export default function ProjectDetailPage() {
             <div className="form-row">
               <label className="field">
                 Responsable
-                <input value={form.assignee} onChange={(event) => updateField('assignee', event.target.value)} />
+                <select value={form.assignee} onChange={(event) => updateField('assignee', event.target.value)}>
+                  <option value="">Selecciona a una persona</option>
+                  {assigneeOptions.map((member) => (
+                    <option key={member.id || member.email || member.name} value={member.name}>
+                      {member.name}{member.email ? ` - ${member.email}` : ''}
+                    </option>
+                  ))}
+                </select>
                 {submitted && errors.assignee ? <span className="field-error">{errors.assignee}</span> : null}
               </label>
 

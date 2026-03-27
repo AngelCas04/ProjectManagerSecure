@@ -5,13 +5,16 @@ import com.projectmanager.platform.domain.AppUser;
 import com.projectmanager.platform.domain.AuditEvent;
 import com.projectmanager.platform.domain.CalendarEntry;
 import com.projectmanager.platform.domain.ChatMessage;
+import com.projectmanager.platform.domain.ChatRoom;
 import com.projectmanager.platform.domain.Project;
 import com.projectmanager.platform.domain.RoleName;
 import com.projectmanager.platform.domain.TaskItem;
 import com.projectmanager.platform.domain.WorkGroup;
+import com.projectmanager.platform.domain.WorkGroupInvitation;
 import com.projectmanager.platform.domain.WorkGroupMember;
 import com.projectmanager.platform.security.AuthenticatedUser;
 import com.projectmanager.platform.security.InputSanitizer;
+import com.projectmanager.platform.repository.WorkGroupRepository;
 import org.springframework.stereotype.Component;
 
 import java.time.ZoneOffset;
@@ -25,9 +28,11 @@ public class ViewMapper {
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final InputSanitizer inputSanitizer;
+    private final WorkGroupRepository workGroupRepository;
 
-    public ViewMapper(InputSanitizer inputSanitizer) {
+    public ViewMapper(InputSanitizer inputSanitizer, WorkGroupRepository workGroupRepository) {
         this.inputSanitizer = inputSanitizer;
+        this.workGroupRepository = workGroupRepository;
     }
 
     public ViewModels.SessionView toSessionView(AuthenticatedUser user) {
@@ -35,24 +40,38 @@ public class ViewMapper {
     }
 
     public ViewModels.UserView toUserView(AuthenticatedUser user) {
+        String ownedWorkGroupId = workGroupRepository.findByOwnerId(user.userId())
+            .map(group -> group.getId().toString())
+            .orElse(null);
         return new ViewModels.UserView(
             user.userId().toString(),
             user.displayName(),
             roleLabel(user.role()),
             "",
             user.email(),
-            inputSanitizer.toInitials(user.displayName())
+            inputSanitizer.toInitials(user.displayName()),
+            null,
+            user.isAdmin(),
+            user.isAdmin() && ownedWorkGroupId == null,
+            ownedWorkGroupId
         );
     }
 
     public ViewModels.UserView toUserView(AppUser user) {
+        String ownedWorkGroupId = workGroupRepository.findByOwnerId(user.getId())
+            .map(group -> group.getId().toString())
+            .orElse(null);
         return new ViewModels.UserView(
             user.getId().toString(),
             user.getName(),
             roleLabel(user.getRole()),
             user.getTeam(),
             user.getEmail(),
-            inputSanitizer.toInitials(user.getName())
+            inputSanitizer.toInitials(user.getName()),
+            user.getAvatarUrl(),
+            user.getRole() == RoleName.ADMINISTRADOR,
+            user.getRole() == RoleName.ADMINISTRADOR && ownedWorkGroupId == null,
+            ownedWorkGroupId
         );
     }
 
@@ -63,7 +82,8 @@ public class ViewMapper {
             user.getEmail(),
             roleLabel(user.getRole()),
             user.getTeam(),
-            inputSanitizer.toInitials(user.getName())
+            inputSanitizer.toInitials(user.getName()),
+            user.getAvatarUrl()
         );
     }
 
@@ -76,7 +96,30 @@ public class ViewMapper {
             roleLabel(user.getRole()),
             membership.getRole().name(),
             user.getTeam(),
-            inputSanitizer.toInitials(user.getName())
+            inputSanitizer.toInitials(user.getName()),
+            user.getAvatarUrl()
+        );
+    }
+
+    public ViewModels.ChatRoomView toChatRoomView(ChatRoom room) {
+        return new ViewModels.ChatRoomView(
+            room.getId().toString(),
+            room.getWorkGroup().getId().toString(),
+            room.getProject() == null ? null : room.getProject().getId().toString(),
+            room.getName(),
+            room.getDescription(),
+            room.getSlug(),
+            room.isDefaultRoom()
+        );
+    }
+
+    public ViewModels.TeamInvitationView toTeamInvitationView(WorkGroupInvitation invitation) {
+        return new ViewModels.TeamInvitationView(
+            invitation.getId().toString(),
+            invitation.getEmail(),
+            invitation.getAcceptedAt() != null ? "ACCEPTED" : invitation.getRevokedAt() != null ? "REVOKED" : "PENDING",
+            invitation.getCreatedAt().toEpochMilli(),
+            invitation.getExpiresAt().toEpochMilli()
         );
     }
 
@@ -143,7 +186,9 @@ public class ViewMapper {
     public ViewModels.ChatMessageView toChatView(ChatMessage message) {
         return new ViewModels.ChatMessageView(
             message.getId().toString(),
-            message.getProject().getId().toString(),
+            message.getProject() == null ? null : message.getProject().getId().toString(),
+            message.getRoom() == null ? null : message.getRoom().getId().toString(),
+            message.getRoom() == null ? null : message.getRoom().getName(),
             message.getAuthor().getName(),
             roleLabel(message.getAuthor().getRole()),
             TIME_FORMAT.format(message.getCreatedAt().atZone(ZoneOffset.UTC).toLocalTime()),

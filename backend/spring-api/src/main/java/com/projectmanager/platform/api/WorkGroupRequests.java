@@ -38,4 +38,24 @@ public final class WorkGroupRequests {
         @NotBlank @Pattern(regexp = "LEAD|MEMBER") String role
     ) {
     }
+
+    public record TeamSetupRequest(
+        @NotBlank @Size(max = 80) String name,
+        @Size(max = 600) String description,
+        @Size(max = 80) String focus,
+        @Pattern(regexp = "Internal|Restricted|Confidential") String visibility,
+        @Size(max = 60) String cadence,
+        List<@Size(max = 190) String> memberEmails
+    ) {
+    }
+
+    public record InviteMembersRequest(
+        List<@Size(max = 190) String> emails
+    ) {
+    }
+
+    public record AcceptInvitationRequest(
+        @NotBlank @Size(min = 32, max = 180) String token
+    ) {
+    }
 }

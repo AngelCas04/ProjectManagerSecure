@@ -5,7 +5,6 @@ import com.projectmanager.platform.api.ChatRequests;
 import com.projectmanager.platform.api.ViewModels;
 import com.projectmanager.platform.security.AuthenticatedUser;
 import com.projectmanager.platform.service.ChatService;
-import com.projectmanager.platform.service.ProjectAccessService;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -15,7 +14,6 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.net.URI;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,49 +23,48 @@ public class ChatSocketHandler extends TextWebSocketHandler {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ChatService chatService;
-    private final ProjectAccessService projectAccessService;
     private final Map<ChatRoomKey, Set<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
 
-    public ChatSocketHandler(ChatService chatService, ProjectAccessService projectAccessService) {
+    public ChatSocketHandler(ChatService chatService) {
         this.chatService = chatService;
-        this.projectAccessService = projectAccessService;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         AuthenticatedUser user = authenticatedUser(session);
-        UUID projectId = projectId(session.getUri());
-        String chatTeam = chatService.resolveChatTeam(user);
-        projectAccessService.requireProjectAccess(projectId, user);
+        ChatRoomKey roomKey = resolveRoomKey(session.getUri(), user);
 
-        session.getAttributes().put("projectId", projectId);
-        session.getAttributes().put("chatTeam", chatTeam);
-        roomSessions.computeIfAbsent(new ChatRoomKey(projectId, chatTeam), ignored -> ConcurrentHashMap.newKeySet()).add(session);
+        session.getAttributes().put("roomId", roomKey.roomId());
+        roomSessions.computeIfAbsent(roomKey, ignored -> ConcurrentHashMap.newKeySet()).add(session);
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         AuthenticatedUser user = authenticatedUser(session);
-        UUID boundProjectId = (UUID) session.getAttributes().get("projectId");
-        String boundChatTeam = (String) session.getAttributes().get("chatTeam");
+        UUID boundRoomId = (UUID) session.getAttributes().get("roomId");
         ChatRequests.SocketIncomingMessage payload = objectMapper.readValue(message.getPayload(), ChatRequests.SocketIncomingMessage.class);
-        String currentChatTeam = chatService.resolveChatTeam(user);
+        UUID requestedRoomId = payload.roomId() != null ? payload.roomId() : boundRoomId;
 
-        if (!boundProjectId.equals(payload.projectId()) || !Objects.equals(boundChatTeam, currentChatTeam)) {
+        if (requestedRoomId == null) {
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
 
-        ViewModels.ChatMessageView saved = chatService.createMessage(payload.projectId(), payload.text(), user);
-        broadcast(new ChatRoomKey(boundProjectId, boundChatTeam), objectMapper.writeValueAsString(saved));
+        UUID resolvedRoomId = chatService.resolveSocketRoomId(payload.projectId(), requestedRoomId, user);
+        if (!resolvedRoomId.equals(boundRoomId)) {
+            session.close(CloseStatus.POLICY_VIOLATION);
+            return;
+        }
+
+        ViewModels.ChatMessageView saved = chatService.createMessage(payload.projectId(), requestedRoomId, payload.text(), user);
+        broadcast(new ChatRoomKey(boundRoomId), objectMapper.writeValueAsString(saved));
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        Object projectId = session.getAttributes().get("projectId");
-        Object chatTeam = session.getAttributes().get("chatTeam");
-        if (projectId instanceof UUID id && chatTeam instanceof String team) {
-            ChatRoomKey roomKey = new ChatRoomKey(id, team);
+        Object roomId = session.getAttributes().get("roomId");
+        if (roomId instanceof UUID id) {
+            ChatRoomKey roomKey = new ChatRoomKey(id);
             Set<WebSocketSession> sessions = roomSessions.get(roomKey);
             if (sessions != null) {
                 sessions.remove(session);
@@ -96,19 +93,24 @@ public class ChatSocketHandler extends TextWebSocketHandler {
         throw new IllegalStateException("WebSocket unauthenticated.");
     }
 
-    private UUID projectId(URI uri) {
-        if (uri == null || uri.getQuery() == null) {
-            throw new IllegalArgumentException("Missing projectId.");
-        }
-        for (String pair : uri.getQuery().split("&")) {
-            String[] parts = pair.split("=", 2);
-            if (parts.length == 2 && "projectId".equals(parts[0])) {
-                return UUID.fromString(parts[1]);
+    private ChatRoomKey resolveRoomKey(URI uri, AuthenticatedUser user) {
+        UUID roomId = null;
+        UUID projectId = null;
+        if (uri != null && uri.getQuery() != null) {
+            for (String pair : uri.getQuery().split("&")) {
+                String[] parts = pair.split("=", 2);
+                if (parts.length == 2 && "roomId".equals(parts[0])) {
+                    roomId = UUID.fromString(parts[1]);
+                } else if (parts.length == 2 && "projectId".equals(parts[0])) {
+                    projectId = UUID.fromString(parts[1]);
+                }
             }
         }
-        throw new IllegalArgumentException("Missing projectId.");
+
+        UUID resolvedRoomId = chatService.resolveSocketRoomId(projectId, roomId, user);
+        return new ChatRoomKey(resolvedRoomId);
     }
 
-    private record ChatRoomKey(UUID projectId, String chatTeam) {
+    private record ChatRoomKey(UUID roomId) {
     }
 }

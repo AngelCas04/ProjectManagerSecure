@@ -1,11 +1,11 @@
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthHelpDrawer } from '../components/AuthHelpDrawer';
 import { useAppContext } from '../context/AppContext';
 import { useI18n } from '../context/I18nContext';
 import { revealPanel, staggerItem, staggerParent } from '../utils/motion';
-import { sanitizePlainText, validateCredentials } from '../utils/security';
+import { normalizeEmail, sanitizePlainText, validateCredentials } from '../utils/security';
 
 const demoCredentials = {
   email: 'valeria.ruiz@acme.dev',
@@ -14,32 +14,56 @@ const demoCredentials = {
 
 const helpLabel = '\u00BFNecesitas ayuda?';
 
-const initialForm = {
-  mode: 'login',
-  name: '',
-  team: 'Producto',
-  email: demoCredentials.email,
-  password: demoCredentials.password,
-  confirmPassword: demoCredentials.password
-};
+function buildInitialForm(search) {
+  const params = new URLSearchParams(search);
+  const inviteToken = params.get('inviteToken') || '';
+  const inviteEmail = params.get('email') || '';
+  const inviteTeam = params.get('team') || '';
+  const requestedMode = params.get('mode') === 'register' ? 'register' : 'login';
+
+  if (requestedMode === 'register') {
+    return {
+      mode: 'register',
+      accountType: 'MIEMBRO_PROYECTO',
+      name: '',
+      team: inviteTeam,
+      email: inviteEmail,
+      password: '',
+      confirmPassword: '',
+      inviteToken
+    };
+  }
+
+  return {
+    mode: 'login',
+    accountType: 'MIEMBRO_PROYECTO',
+    name: '',
+    team: 'Producto',
+    email: inviteEmail || demoCredentials.email,
+    password: demoCredentials.password,
+    confirmPassword: demoCredentials.password,
+    inviteToken
+  };
+}
 
 const experienceHighlights = [
   {
-    title: 'Proyectos claros',
-    body: 'Ve avances, prioridades y fechas sin navegar entre pantallas confusas.'
+    title: 'Trabajo claro',
+    body: 'Ve tus proyectos, pendientes y conversaciones sin navegar entre pantallas confusas.'
   },
   {
-    title: 'Mensajes con contexto',
-    body: 'Conversa con tu equipo desde salas ligadas a los proyectos en los que participas.'
+    title: 'Equipo visible',
+    body: 'Cada espacio agrupa personas, roles y ritmo de trabajo en un solo lugar.'
   },
   {
-    title: 'Seguimiento diario',
-    body: 'Ten a mano tareas, calendario y actividad reciente en el mismo espacio.'
+    title: 'Acceso recuperable',
+    body: 'Tu cuenta guarda una palabra de recuperación para volver a entrar con seguridad.'
   }
 ];
 
 function buildFriendlyAuthError(requestError) {
-  const message = String(requestError?.message || '').toLowerCase();
+  const rawMessage = String(requestError?.message || '');
+  const message = rawMessage.toLowerCase();
 
   if (message.includes('401') || message.includes('unauthorized')) {
     return 'Revisa tu correo y contrasena para volver a intentarlo.';
@@ -49,24 +73,66 @@ function buildFriendlyAuthError(requestError) {
     return 'Hiciste varios intentos seguidos. Espera un momento y vuelve a probar.';
   }
 
+  if (message.includes('already registered')) {
+    return 'Ese correo ya tiene una cuenta. Inicia sesion o recupera tu acceso.';
+  }
+
+  if (message.includes('at least 12 characters')) {
+    return 'Usa una contrasena de al menos 12 caracteres.';
+  }
+
+  if (message.includes('upper, lower, number and special character')) {
+    return 'La contrasena debe incluir mayuscula, minuscula, numero y simbolo.';
+  }
+
+  if (message.includes('invitation')) {
+    return 'No pudimos completar la invitacion. Vuelve a abrir el enlace o solicita una nueva.';
+  }
+
+  if (message.includes('name is required')) {
+    return 'Escribe tu nombre para crear la cuenta.';
+  }
+
+  if (rawMessage.trim()) {
+    return rawMessage;
+  }
+
   return 'No pudimos abrir tu espacio en este momento. Intentalo nuevamente.';
+}
+
+function copyText(text) {
+  if (!navigator?.clipboard?.writeText) {
+    return Promise.reject(new Error('Clipboard unavailable'));
+  }
+
+  return navigator.clipboard.writeText(text);
 }
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { error, isLoading, signIn, registerAccount } = useAppContext();
+  const { error, isLoading, signIn, registerAccount, acceptTeamInvitation } = useAppContext();
   const { language, toggleLanguage, translate } = useI18n();
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(() => buildInitialForm(location.search));
   const [submitted, setSubmitted] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authNotice] = useState(location.state?.authNotice || '');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [showRecoveryReveal, setShowRecoveryReveal] = useState(false);
+  const [recoveryWord, setRecoveryWord] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
+  const [recoveryWordCopied, setRecoveryWordCopied] = useState(false);
+  const [postRecoveryDestination, setPostRecoveryDestination] = useState('/app/overview');
 
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const inviteToken = searchParams.get('inviteToken') || form.inviteToken || '';
+  const inviteTeam = sanitizePlainText(searchParams.get('team') || '');
+  const isInvitationRegistration = form.mode === 'register' && Boolean(inviteToken);
   const destination = location.state?.from?.pathname || '/app/overview';
   const errors = useMemo(() => {
     const nextErrors = validateCredentials(form);
 
-    if (form.mode === 'register' && !sanitizePlainText(form.team)) {
+    if (form.mode === 'register' && form.accountType !== 'ADMINISTRADOR' && !sanitizePlainText(form.team)) {
       nextErrors.team = 'Indica el equipo al que perteneces.';
     }
 
@@ -80,10 +146,15 @@ export default function LoginPage() {
   function switchMode(nextMode) {
     setSubmitted(false);
     setAuthError('');
+    setShowRecoveryReveal(false);
+    setRecoveryWord('');
+    setRecoveryMessage('');
+    setRecoveryWordCopied(false);
+    setPostRecoveryDestination('/app/overview');
 
     if (nextMode === 'login') {
       setForm({
-        ...initialForm,
+        ...buildInitialForm(location.search),
         mode: 'login'
       });
       return;
@@ -91,11 +162,13 @@ export default function LoginPage() {
 
     setForm({
       mode: 'register',
+      accountType: 'MIEMBRO_PROYECTO',
       name: '',
-      team: 'Producto',
-      email: '',
+      team: inviteTeam,
+      email: searchParams.get('email') || '',
       password: '',
-      confirmPassword: ''
+      confirmPassword: '',
+      inviteToken
     });
   }
 
@@ -104,6 +177,19 @@ export default function LoginPage() {
       ...current,
       [name]: name === 'password' || name === 'confirmPassword' ? value.trim() : sanitizePlainText(value)
     }));
+  }
+
+  function openRecoveryPage() {
+    const email = normalizeEmail(form.email);
+    navigate(email ? `/forgot-password?email=${encodeURIComponent(email)}` : '/forgot-password');
+  }
+
+  async function revealRecoveryWord(recoveryKit, nextPath) {
+    setRecoveryWord(recoveryKit?.passphrase || '');
+    setRecoveryMessage(recoveryKit?.message || 'La necesitaras junto a tu correo si algun dia quieres restablecer tu contrasena.');
+    setRecoveryWordCopied(false);
+    setPostRecoveryDestination(nextPath || destination);
+    setShowRecoveryReveal(true);
   }
 
   async function handleSubmit(event) {
@@ -117,12 +203,36 @@ export default function LoginPage() {
 
     try {
       if (form.mode === 'register') {
-        await registerAccount(form);
-        navigate('/app/groups', { replace: true });
-      } else {
-        await signIn(form);
-        navigate(destination, { replace: true });
+        const registration = await registerAccount(form);
+        if (registration?.recoveryKit?.passphrase) {
+          await revealRecoveryWord(
+            registration.recoveryKit,
+            registration?.currentUser?.needsTeamSetup ? '/app/members?setup=1' : '/app/groups'
+          );
+          return;
+        }
+        navigate(registration?.currentUser?.needsTeamSetup ? '/app/members?setup=1' : '/app/groups', { replace: true });
+        return;
       }
+
+      const session = await signIn(form);
+      if (inviteToken) {
+        await acceptTeamInvitation(inviteToken);
+        if (session?.recoveryKit?.passphrase) {
+          await revealRecoveryWord(session.recoveryKit, '/app/overview');
+          return;
+        }
+        navigate('/app/overview', { replace: true });
+        return;
+      }
+      if (session?.recoveryKit?.passphrase) {
+        await revealRecoveryWord(
+          session.recoveryKit,
+          session?.currentUser?.needsTeamSetup ? '/app/members?setup=1' : destination
+        );
+        return;
+      }
+      navigate(session?.currentUser?.needsTeamSetup ? '/app/members?setup=1' : destination, { replace: true });
     } catch (requestError) {
       setAuthError(buildFriendlyAuthError(requestError));
     }
@@ -137,6 +247,20 @@ export default function LoginPage() {
     } catch (requestError) {
       setAuthError(buildFriendlyAuthError(requestError));
     }
+  }
+
+  async function handleCopyRecoveryWord() {
+    try {
+      await copyText(recoveryWord);
+      setRecoveryWordCopied(true);
+    } catch {
+      setRecoveryWordCopied(false);
+    }
+  }
+
+  function handleRecoveryContinue() {
+    setShowRecoveryReveal(false);
+    navigate(postRecoveryDestination, { replace: true });
   }
 
   return (
@@ -229,6 +353,32 @@ export default function LoginPage() {
           <form className="auth-grid auth-grid-product" onSubmit={handleSubmit}>
             {form.mode === 'register' ? (
               <>
+                <div className="account-type-toggle" role="group" aria-label="Tipo de cuenta">
+                  <button
+                    type="button"
+                    className={form.accountType === 'MIEMBRO_PROYECTO' ? 'auth-mode-pill active' : 'auth-mode-pill'}
+                    onClick={() => updateField('accountType', 'MIEMBRO_PROYECTO')}
+                    disabled={Boolean(inviteToken)}
+                  >
+                    Miembro
+                  </button>
+                  <button
+                    type="button"
+                    className={form.accountType === 'ADMINISTRADOR' ? 'auth-mode-pill active' : 'auth-mode-pill'}
+                    onClick={() => updateField('accountType', 'ADMINISTRADOR')}
+                    disabled={Boolean(inviteToken)}
+                  >
+                    Administrador de equipo
+                  </button>
+                </div>
+
+                {inviteToken ? (
+                  <div className="auth-registration-note">
+                    <strong>Esta cuenta se creara para unirse al equipo de una invitacion</strong>
+                    <p>Usaremos el correo y el equipo del enlace, y te agregaremos como miembro cuando termines el registro.</p>
+                  </div>
+                ) : null}
+
                 <label className="field">
                   Nombre completo
                   <input
@@ -243,22 +393,26 @@ export default function LoginPage() {
                 </label>
 
                 <label className="field">
-                  Equipo
+                  {form.accountType === 'ADMINISTRADOR' ? 'Nombre del equipo inicial (opcional)' : 'Equipo'}
                   <input
                     name="team"
                     value={form.team}
                     onChange={(event) => updateField('team', event.target.value)}
                     autoComplete="organization"
                     maxLength="60"
-                    placeholder="Ejemplo: Producto"
+                    placeholder={form.accountType === 'ADMINISTRADOR' ? 'Puedes crearlo despues desde Miembros' : 'Ejemplo: Producto'}
+                    readOnly={isInvitationRegistration}
+                    aria-readonly={isInvitationRegistration}
+                    className={isInvitationRegistration ? 'locked-field-input' : ''}
                   />
+                  {isInvitationRegistration ? <span className="field-help">Este equipo viene definido por la invitacion.</span> : null}
                   {submitted && errors.team ? <span className="field-error">{translate(errors.team)}</span> : null}
                 </label>
               </>
             ) : null}
 
             <label className="field">
-              Correo
+              Correo corporativo
               <input
                 name="email"
                 type="email"
@@ -267,7 +421,11 @@ export default function LoginPage() {
                 autoComplete="username"
                 inputMode="email"
                 placeholder="nombre@empresa.com"
+                readOnly={Boolean(inviteToken)}
+                aria-readonly={Boolean(inviteToken)}
+                className={inviteToken ? 'locked-field-input' : ''}
               />
+              {inviteToken ? <span className="field-help">Este correo queda reservado para aceptar la invitacion.</span> : null}
               {submitted && errors.email ? <span className="field-error">{translate(errors.email)}</span> : null}
             </label>
 
@@ -284,6 +442,12 @@ export default function LoginPage() {
               {submitted && errors.password ? <span className="field-error">{translate(errors.password)}</span> : null}
             </label>
 
+            {form.mode === 'login' ? (
+              <button type="button" className="auth-inline-link auth-inline-link-left" onClick={openRecoveryPage}>
+                Olvidaste tu contrasena?
+              </button>
+            ) : null}
+
             {form.mode === 'register' ? (
               <label className="field">
                 Confirmar contrasena
@@ -299,6 +463,18 @@ export default function LoginPage() {
               </label>
             ) : null}
 
+            {form.mode === 'register' ? (
+              <div className="auth-registration-note">
+                <strong>{form.accountType === 'ADMINISTRADOR' ? 'Despues podras crear tu equipo e invitar miembros' : 'La app generara una palabra de recuperacion'}</strong>
+                <p>
+                  {form.accountType === 'ADMINISTRADOR'
+                    ? 'Terminando tu cuenta te llevaremos a Miembros para crear el equipo, agregar correos o saltarte ese paso y volver despues.'
+                    : 'La veras una sola vez al crear tu cuenta. Guardala en un lugar seguro porque la necesitaras si olvidas tu contrasena.'}
+                </p>
+              </div>
+            ) : null}
+
+            {authNotice ? <span className="auth-success-note">{authNotice}</span> : null}
             {authError || error ? <span className="field-error">{translate(authError || error)}</span> : null}
 
             <button type="submit" className="primary-button block-button" disabled={isLoading}>
@@ -320,8 +496,8 @@ export default function LoginPage() {
             >
               {form.mode === 'login' ? 'No tienes cuenta? Crear una' : 'Ya tienes cuenta? Inicia sesion'}
             </button>
-            <button type="button" className="auth-inline-link" onClick={() => setIsHelpOpen(true)}>
-              {helpLabel}
+            <button type="button" className="auth-inline-link" onClick={openRecoveryPage}>
+              Olvidaste tu contrasena?
             </button>
           </div>
 
@@ -330,6 +506,45 @@ export default function LoginPage() {
           </p>
         </motion.section>
       </div>
+
+      <AnimatePresence>
+        {showRecoveryReveal && recoveryWord ? (
+          <motion.div className="recovery-modal-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.section
+              className="recovery-modal"
+              initial={{ opacity: 0, y: 28, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="recovery-word-title"
+            >
+              <p className="eyebrow">Guarda esto ahora</p>
+              <h3 id="recovery-word-title">Tu palabra de recuperacion</h3>
+              <p className="body-copy">{recoveryMessage || 'Es la llave que pediremos si algun dia necesitas volver a entrar. La vas a ver solo una vez.'}</p>
+
+              <div className="recovery-word-card">
+                <strong>{recoveryWord}</strong>
+                <span>Clave generada para esta cuenta</span>
+              </div>
+
+              <div className="recovery-modal-actions">
+                <button type="button" className="ghost-button" onClick={handleCopyRecoveryWord}>
+                  {recoveryWordCopied ? 'Copiada' : 'Copiar clave'}
+                </button>
+                <button type="button" className="primary-button" onClick={handleRecoveryContinue}>
+                  Ya la guarde
+                </button>
+              </div>
+
+              <p className="recovery-modal-foot">
+                La usaremos junto a tu correo para validar que realmente eres tu antes de enviarte un enlace de recuperacion.
+              </p>
+            </motion.section>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <AuthHelpDrawer isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </>

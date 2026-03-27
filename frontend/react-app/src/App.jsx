@@ -7,6 +7,9 @@ import { ProtectedRoute } from './routes/ProtectedRoute';
 import { RootRedirect } from './routes/RootRedirect';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const JoinTeamPage = lazy(() => import('./pages/JoinTeamPage'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
@@ -16,6 +19,7 @@ const ChatPage = lazy(() => import('./pages/ChatPage'));
 const GroupsPage = lazy(() => import('./pages/GroupsPage'));
 const TimelinePage = lazy(() => import('./pages/TimelinePage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const MembersPage = lazy(() => import('./pages/MembersPage'));
 
 function App() {
   return (
@@ -26,6 +30,9 @@ function App() {
             <Routes>
               <Route path="/" element={<RootRedirect />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/join-team" element={<JoinTeamPage />} />
 
               <Route element={<ProtectedRoute />}>
                 <Route path="/app" element={<AppLayout />}>
@@ -40,6 +47,7 @@ function App() {
                   <Route path="timeline" element={<TimelinePage />} />
                   <Route path="security" element={<Navigate to="../overview" replace />} />
                   <Route path="profile" element={<ProfilePage />} />
+                  <Route path="members" element={<MembersPage />} />
                 </Route>
               </Route>
 

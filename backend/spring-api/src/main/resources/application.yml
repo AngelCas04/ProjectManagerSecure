@@ -20,6 +20,17 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS:true}
 
 app:
   security:
@@ -32,6 +43,12 @@ app:
     allowed-origins:
       - ${APP_SECURITY_ALLOWED_ORIGIN_1:http://localhost:5173}
       - ${APP_SECURITY_ALLOWED_ORIGIN_2:http://localhost:4173}
+  recovery:
+    frontend-base-url: ${APP_RECOVERY_FRONTEND_BASE_URL:http://localhost:5173}
+    reset-path: ${APP_RECOVERY_RESET_PATH:/reset-password}
+    token-ttl-seconds: ${APP_RECOVERY_TOKEN_TTL:1800}
+    sender-address: ${APP_RECOVERY_SENDER_ADDRESS:noreply@projectmanager.local}
+    sender-name: ${APP_RECOVERY_SENDER_NAME:Project Manager Secure}
 
 logging:
   level:

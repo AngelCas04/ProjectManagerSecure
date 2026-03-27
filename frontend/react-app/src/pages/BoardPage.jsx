@@ -7,19 +7,20 @@ import { useI18n } from '../context/I18nContext';
 import { staggerItem, staggerParent } from '../utils/motion';
 import { STATUS_ORDER, groupTasksByStatus } from '../utils/projects';
 import { sanitizeMultilineText, sanitizePlainText, validateTaskForm } from '../utils/security';
+import { getProjectMembers, getWorkspaceMembers } from '../utils/team';
 
 function sortTasks(tasks) {
   return [...tasks].sort((left, right) => left.dueDate.localeCompare(right.dueDate));
 }
 
 export default function BoardPage() {
-  const { createTask, moveTask, projects, tasks } = useAppContext();
+  const { createTask, currentUser, moveTask, projects, tasks, userDirectory, workgroups } = useAppContext();
   const { translate } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [draggedTaskId, setDraggedTaskId] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState(() => ({
-    projectId: searchParams.get('project') || projects[0]?.id || '',
+    projectId: searchParams.get('project') || '',
     title: '',
     description: '',
     assignee: '',
@@ -41,6 +42,27 @@ export default function BoardPage() {
 
   const groupedTasks = useMemo(() => groupTasksByStatus(visibleTasks), [visibleTasks]);
   const errors = useMemo(() => validateTaskForm(form), [form]);
+  const assigneeOptions = useMemo(() => {
+    const scopedMembers = getProjectMembers(workgroups, form.projectId || activeProjectId);
+    return scopedMembers.length ? scopedMembers : getWorkspaceMembers(workgroups, currentUser, userDirectory);
+  }, [activeProjectId, currentUser, form.projectId, userDirectory, workgroups]);
+  const overdueTasks = useMemo(
+    () => visibleTasks.filter((task) => task.status !== 'DONE' && task.dueDate < new Date().toISOString().slice(0, 10)),
+    [visibleTasks]
+  );
+  const focusedAssignees = useMemo(() => {
+    const counts = visibleTasks.reduce((lookup, task) => {
+      if (!task.assignee) {
+        return lookup;
+      }
+      lookup[task.assignee] = (lookup[task.assignee] || 0) + 1;
+      return lookup;
+    }, {});
+
+    return Object.entries(counts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 3);
+  }, [visibleTasks]);
 
   function updateField(name, value) {
     setForm((current) => ({
@@ -131,6 +153,24 @@ export default function BoardPage() {
         </div>
       </motion.section>
 
+      <motion.section className="metric-grid board-metric-grid" variants={staggerParent}>
+        <motion.article className="metric-card glass-card" variants={staggerItem}>
+          <span>Tareas visibles</span>
+          <strong>{visibleTasks.length}</strong>
+          <p className="body-copy">Todo lo que esta dentro del alcance que acabas de elegir.</p>
+        </motion.article>
+        <motion.article className="metric-card glass-card" variants={staggerItem}>
+          <span>Vencidas</span>
+          <strong>{overdueTasks.length}</strong>
+          <p className="body-copy">Pendientes que necesitan atencion para recuperar ritmo.</p>
+        </motion.article>
+        <motion.article className="metric-card glass-card" variants={staggerItem}>
+          <span>Responsables visibles</span>
+          <strong>{assigneeOptions.length}</strong>
+          <p className="body-copy">Personas del equipo que puedes asignar desde este tablero.</p>
+        </motion.article>
+      </motion.section>
+
       <motion.section className="board-layout" variants={staggerParent}>
         <motion.div className="board-grid" variants={staggerParent}>
           {STATUS_ORDER.map((status) => (
@@ -139,6 +179,7 @@ export default function BoardPage() {
                 status={status}
                 tasks={groupedTasks[status] || []}
                 projectLookup={projectLookup}
+                teamMembers={assigneeOptions}
                 onDragTask={setDraggedTaskId}
                 onDropTask={(nextStatus) => {
                   void handleDropTask(nextStatus);
@@ -187,7 +228,14 @@ export default function BoardPage() {
             <div className="form-row">
               <label className="field">
                 {translate('Assignee')}
-                <input value={form.assignee} onChange={(event) => updateField('assignee', event.target.value)} />
+                <select value={form.assignee} onChange={(event) => updateField('assignee', event.target.value)}>
+                  <option value="">Selecciona responsable</option>
+                  {assigneeOptions.map((member) => (
+                    <option key={member.id || member.email || member.name} value={member.name}>
+                      {member.name}{member.email ? ` - ${member.email}` : ''}
+                    </option>
+                  ))}
+                </select>
                 {submitted && errors.assignee ? <span className="field-error">{translate(errors.assignee)}</span> : null}
               </label>
               <label className="field">
@@ -221,6 +269,16 @@ export default function BoardPage() {
               {translate('Add task')}
             </button>
           </form>
+
+          {focusedAssignees.length ? (
+            <div className="board-assignee-strip">
+              {focusedAssignees.map(([name, count]) => (
+                <span key={name} className="tag subtle-tag">
+                  {name}: {count}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </motion.aside>
       </motion.section>
     </motion.div>

@@ -23,6 +23,23 @@ Combina una experiencia moderna tipo workspace con tablero Kanban, calendario, c
 - Historial de actividad y base para auditoria
 - Cliente de escritorio listo para Windows
 
+## Actualizacion V1.01
+
+Esta version consolida el salto de prototipo a producto funcional, con foco en colaboracion real entre administradores y miembros del mismo equipo.
+
+- Recuperacion de contrasena con palabra de seguridad, correo de restablecimiento y flujo completo desde acceso
+- Invitaciones de equipo por correo con enlace directo para unirse al workspace correcto
+- Panel `Miembros` con administracion de invitaciones, altas y bajas para administradores
+- Perfil con soporte para foto de usuario y mejor configuracion personal
+- Registro guiado para equipos nuevos, con onboarding mas limpio para administradores
+- Nuevos espacios de chat por proyecto y mejor control de salas
+- Sincronizacion automatica del workspace para reflejar proyectos, tareas y mensajes sin depender de recargas manuales
+- Correccion de visibilidad por equipo para que miembros vean el trabajo compartido por su administrador
+- Equipos nuevos arrancan sin proyectos heredados, listos para construir su espacio desde cero
+
+Notas completas:
+[DOCUMENTACION.md](DOCUMENTACION.md)
+
 ## Seguridad incorporada
 
 - Sesiones con cookies `HttpOnly`

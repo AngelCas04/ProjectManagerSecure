@@ -63,6 +63,13 @@ resource "aws_launch_template" "app" {
     app_allowed_origin_2 = var.app_allowed_origin_2
     app_secure_cookies  = var.app_secure_cookies
     app_cookie_same_site = var.app_cookie_same_site
+    recovery_frontend_base_url = var.recovery_frontend_base_url
+    recovery_sender_address    = var.recovery_sender_address
+    recovery_sender_name       = var.recovery_sender_name
+    mail_host                  = var.mail_host
+    mail_port                  = var.mail_port
+    mail_username              = var.mail_username
+    mail_password              = var.mail_password
   }))
 
   tag_specifications {

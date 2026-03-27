@@ -71,7 +71,7 @@ public class BootstrapService {
         this.viewMapper = viewMapper;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ViewModels.BootstrapView bootstrap(AuthenticatedUser user) {
         AppUser persistedUser = appUserRepository.findById(user.userId())
             .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "User not found."));
@@ -94,6 +94,7 @@ public class BootstrapService {
             .toList();
 
         List<ViewModels.ChatMessageView> messageViews = chatService.listMessages(projectIds, user);
+        List<ViewModels.ChatRoomView> chatRoomViews = chatService.listRooms(user);
 
         List<ViewModels.TimelineEntryView> timelineViews = projectIds.isEmpty() ? List.of() : auditEventRepository.findTop200ByProjectIdInOrderByCreatedAtDesc(projectIds)
             .stream()
@@ -101,7 +102,7 @@ public class BootstrapService {
             .toList();
 
         List<WorkGroup> workGroups = user.isAdmin()
-            ? workGroupRepository.findAllByOrderByNameAsc()
+            ? workGroupRepository.findByOwnerId(user.userId()).map(List::of).orElse(List.of())
             : workGroupMemberRepository.findByUserIdAndStatus(user.userId(), MembershipStatus.ACTIVE)
                 .stream()
                 .map(WorkGroupMember::getWorkGroup)
@@ -118,7 +119,15 @@ public class BootstrapService {
 
         List<ViewModels.UserDirectoryView> userDirectoryViews;
         if (user.isAdmin()) {
-            userDirectoryViews = appUserRepository.findAllByEnabledTrueOrderByNameAsc()
+            Set<java.util.UUID> visibleUserIds = new LinkedHashSet<>();
+            visibleUserIds.add(user.userId());
+            visibleUserIds.addAll(workGroupMemberRepository.findByWorkGroupIdInAndStatus(
+                    workGroups.stream().map(WorkGroup::getId).toList(),
+                    MembershipStatus.ACTIVE
+                ).stream()
+                .map(member -> member.getUser().getId())
+                .toList());
+            userDirectoryViews = appUserRepository.findByIdInAndEnabledTrueOrderByNameAsc(visibleUserIds)
                 .stream()
                 .map(viewMapper::toUserDirectoryView)
                 .toList();
@@ -158,6 +167,7 @@ public class BootstrapService {
             messageViews,
             timelineViews,
             workGroupViews,
+            chatRoomViews,
             userDirectoryViews,
             accessFeed,
             List.of(

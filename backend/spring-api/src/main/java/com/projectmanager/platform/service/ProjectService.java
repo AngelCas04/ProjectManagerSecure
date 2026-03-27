@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -27,7 +28,9 @@ public class ProjectService {
     private final ProjectMemberRepository projectMemberRepository;
     private final AppUserRepository appUserRepository;
     private final ProjectAccessService projectAccessService;
+    private final ProjectParticipantService projectParticipantService;
     private final WorkGroupService workGroupService;
+    private final ChatService chatService;
     private final ViewMapper viewMapper;
     private final AuditService auditService;
     private final InputSanitizer inputSanitizer;
@@ -37,7 +40,9 @@ public class ProjectService {
         ProjectMemberRepository projectMemberRepository,
         AppUserRepository appUserRepository,
         ProjectAccessService projectAccessService,
+        ProjectParticipantService projectParticipantService,
         WorkGroupService workGroupService,
+        ChatService chatService,
         ViewMapper viewMapper,
         AuditService auditService,
         InputSanitizer inputSanitizer
@@ -46,7 +51,9 @@ public class ProjectService {
         this.projectMemberRepository = projectMemberRepository;
         this.appUserRepository = appUserRepository;
         this.projectAccessService = projectAccessService;
+        this.projectParticipantService = projectParticipantService;
         this.workGroupService = workGroupService;
+        this.chatService = chatService;
         this.viewMapper = viewMapper;
         this.auditService = auditService;
         this.inputSanitizer = inputSanitizer;
@@ -67,7 +74,7 @@ public class ProjectService {
         project.setName(inputSanitizer.sanitizePlainText(request.name()));
         project.setDomain(inputSanitizer.sanitizePlainText(request.domain()));
         project.setSummary(inputSanitizer.sanitizeMultilineText(request.summary()));
-        project.setLead(inputSanitizer.sanitizePlainText(request.lead()));
+        project.setLead(projectParticipantService.resolveManagedLead(owner, request.lead()));
         project.setRisk(inputSanitizer.sanitizePlainText(request.risk()));
         project.setClassification(inputSanitizer.sanitizePlainText(request.classification()));
         project.setPermissions("RBAC + policy approval");
@@ -82,6 +89,10 @@ public class ProjectService {
         member.setStatus(MembershipStatus.ACTIVE);
         projectMemberRepository.save(member);
         workGroupService.linkProjectToUserGroups(project, owner);
+        chatService.ensureDefaultProjectRoom(
+            project,
+            new AuthenticatedUser(owner.getId(), owner.getEmail(), owner.getName(), owner.getRole(), "project-create", Instant.now())
+        );
 
         auditService.record(project, "Project", owner.getName(), "Created project " + project.getName() + ".");
         return viewMapper.toProjectView(project, 1);
