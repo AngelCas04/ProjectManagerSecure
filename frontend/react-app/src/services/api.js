@@ -2,6 +2,38 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api
 const API_ROOT = API_BASE_URL.replace(/\/api$/, '');
 const WS_ROOT = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '');
 let csrfToken = '';
+let refreshPromise = null;
+
+function shouldRefreshAuth(path, method, options) {
+  if (options.skipAuthRefresh || options._authRetried || method === 'OPTIONS') {
+    return false;
+  }
+
+  return ![
+    '/auth/login',
+    '/auth/register',
+    '/auth/refresh',
+    '/auth/logout',
+    '/auth/password-recovery/request',
+    '/auth/forgot-password',
+    '/auth/password-recovery/reset',
+    '/auth/reset-password'
+  ].some((authPath) => path.startsWith(authPath));
+}
+
+async function refreshAuthSession() {
+  if (!refreshPromise) {
+    refreshPromise = request('/auth/refresh', {
+      method: 'POST',
+      skipCsrf: true,
+      skipAuthRefresh: true
+    }).finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+}
 
 async function refreshCsrfToken() {
   const response = await fetch(`${API_BASE_URL}/security/csrf`, {
@@ -52,6 +84,14 @@ async function request(path, options = {}) {
     return request(path, {
       ...options,
       _csrfRetried: true
+    });
+  }
+
+  if (response.status === 401 && shouldRefreshAuth(path, method, options)) {
+    await refreshAuthSession();
+    return request(path, {
+      ...options,
+      _authRetried: true
     });
   }
 
