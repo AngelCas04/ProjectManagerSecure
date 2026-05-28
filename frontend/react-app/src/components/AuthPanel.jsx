@@ -18,7 +18,7 @@ export function AuthPanel() {
     const { name, value } = event.target;
     setForm((current) => ({
       ...current,
-      [name]: name === 'password' ? value.trim() : sanitizePlainText(value)
+      [name]: name === 'password' ? value : sanitizePlainText(value)
     }));
   }
 

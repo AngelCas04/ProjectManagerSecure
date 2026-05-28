@@ -67,7 +67,7 @@ export default function ResetPasswordPage() {
   function updateField(name, value) {
     setForm((current) => ({
       ...current,
-      [name]: value.trim()
+      [name]: value
     }));
   }
 

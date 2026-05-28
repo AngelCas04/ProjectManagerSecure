@@ -175,7 +175,7 @@ export default function LoginPage() {
   function updateField(name, value) {
     setForm((current) => ({
       ...current,
-      [name]: name === 'password' || name === 'confirmPassword' ? value.trim() : sanitizePlainText(value)
+      [name]: name === 'password' || name === 'confirmPassword' ? value : sanitizePlainText(value)
     }));
   }
 
